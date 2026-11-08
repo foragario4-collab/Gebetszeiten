@@ -151,7 +151,7 @@ class RadarService : Service(), LocationListener {
             .setCategory(Notification.CATEGORY_NAVIGATION)
             .addAction(Notification.Action.Builder(null, "Radar aus", stopPi).build())
             .addExtras(extras)
-        val chip = if (minsLeft >= 60) "${next.title} ${minsLeft / 60}:${"%02d".format(minsLeft % 60)}" else "${next.title} $minsLeft Min"
+        val chip = Notifs.chipText(next, next.at - now)
         Notifs.applyLiveStyle(b, pct, chip)
         return b.build()
     }

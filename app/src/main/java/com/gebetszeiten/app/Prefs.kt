@@ -5,19 +5,29 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableIntStateOf
 
 object Prefs {
-    private lateinit var sp: SharedPreferences
+    private lateinit var store: SharedPreferences
 
     /** Wird bei jeder Änderung hochgezählt, damit die Oberfläche neu zeichnet. */
     val version = mutableIntStateOf(0)
 
+    /**
+     * Jeder Lesezugriff liest auch [version] mit. Dadurch zeichnet sich jede Stelle,
+     * die eine Einstellung anzeigt, sofort neu, sobald sich etwas ändert.
+     */
+    private val sp: SharedPreferences
+        get() {
+            version.intValue
+            return store
+        }
+
     fun init(ctx: Context) {
-        if (!::sp.isInitialized) {
-            sp = ctx.applicationContext.getSharedPreferences("einstellungen", Context.MODE_PRIVATE)
+        if (!::store.isInitialized) {
+            store = ctx.applicationContext.getSharedPreferences("einstellungen", Context.MODE_PRIVATE)
         }
     }
 
     private fun edit(block: SharedPreferences.Editor.() -> Unit) {
-        val e = sp.edit()
+        val e = store.edit()
         e.block()
         e.apply()
         version.intValue = version.intValue + 1
@@ -124,12 +134,12 @@ object Prefs {
     var radarAlertKey: String
         get() = sp.getString("radarAlertKey", "")!!
         set(v) {
-            sp.edit().putString("radarAlertKey", v).apply()
+            store.edit().putString("radarAlertKey", v).apply()
         }
 
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {
-            sp.edit().putLong("lastHandled", v).apply()
+            store.edit().putLong("lastHandled", v).apply()
         }
 }

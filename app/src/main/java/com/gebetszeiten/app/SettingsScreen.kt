@@ -307,6 +307,51 @@ fun SettingsScreen(v: Int) {
             ToggleRow("Letztes Drittel", Prefs.wThird) { Prefs.wThird = it; Widgets.updateAll(ctx) }
         }
 
+        // ---------- Diagnose ----------
+        Section("Diagnose", footer = "Zeigt, ob alles bereit ist. Bei „fehlt“ in den Android-Einstellungen der App erlauben.") {
+            val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+            val am = ctx.getSystemService(android.app.AlarmManager::class.java)
+            val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+            val net = try {
+                cm?.getNetworkCapabilities(cm.activeNetwork)
+                    ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            } catch (e: Exception) {
+                false
+            }
+            val exact = android.os.Build.VERSION.SDK_INT < 31 || (am?.canScheduleExactAlarms() == true)
+            val promoted: String = if (android.os.Build.VERSION.SDK_INT >= 36) {
+                try {
+                    val r = android.app.NotificationManager::class.java.getMethod("canPostPromotedNotifications").invoke(nm)
+                    if (r == true) "erlaubt" else "aus"
+                } catch (e: Throwable) {
+                    "unbekannt"
+                }
+            } else "ab Android 16"
+            val version = try {
+                ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
+            } catch (e: Exception) {
+                "?"
+            }
+            val now = System.currentTimeMillis()
+            val nextAlarm = Scheduler.actions(now).firstOrNull { it.at > now + 1000 }
+            Mosques.list(ctx)
+            fun ok(b: Boolean) = if (b) "OK" else "fehlt"
+            DiagRow("App-Version", version, true, first = true)
+            DiagRow("Standort", ok(hasLocPermission(ctx)), hasLocPermission(ctx))
+            DiagRow("Mitteilungen", ok(nm?.areNotificationsEnabled() == true), nm?.areNotificationsEnabled() == true)
+            DiagRow("Exakte Wecker", ok(exact), exact)
+            DiagRow("Live-Updates", promoted, promoted != "aus")
+            DiagRow("Internet", if (net) "verbunden" else "offline", net)
+            DiagRow("Moscheen (OSM)", "${Mosques.countOsm()}", Mosques.countOsm() > 0)
+            DiagRow("Eigene Moscheen", "${Mosques.countOwn()}", true)
+            DiagRow("Nächster Wecker", nextAlarm?.let { "${Fmt.time(it.at)} · ${it.ev?.title ?: "Widget"}" } ?: "keiner", nextAlarm != null)
+            ButtonRow("Moscheen neu laden") {
+                Mosques.refresh(ctx, Prefs.lat, Prefs.lng) { okLoad ->
+                    locStatus = if (okLoad) "Moscheen neu geladen: ${Mosques.countOsm()}" else "Moscheen laden fehlgeschlagen"
+                }
+            }
+        }
+
         // ---------- Testen ----------
         Section("Testen", footer = "Live-Updates kannst du in den Android-Mitteilungseinstellungen dieser App erlauben oder abschalten.") {
             val now = System.currentTimeMillis()
@@ -405,5 +450,15 @@ private fun CoordDialog(onClose: () -> Unit) {
                 }.padding(10.dp))
             }
         }
+    }
+}
+
+
+@Composable
+private fun DiagRow(label: String, value: String, good: Boolean, first: Boolean = false) {
+    val p = LocalPal.current
+    RowBase(first) {
+        LabelCol(label)
+        Txt(value, 15, FontWeight.SemiBold, if (good) Color(0xFF34C759) else Color(0xFFFF3B30), maxLines = 1)
     }
 }

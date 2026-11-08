@@ -28,7 +28,8 @@ data class Mosque(
     val adhan: Map<String, String> = emptyMap(),
     val iqamah: Map<String, String> = emptyMap(),
     val custom: Boolean = false,
-    val fetchedAt: Long = 0L
+    val fetchedAt: Long = 0L,
+    val category: String = "Moschee"
 )
 
 object Mosques {
@@ -76,7 +77,10 @@ object Mosques {
             val arr = o.getJSONArray("items")
             osm = (0 until arr.length()).map {
                 val m = arr.getJSONObject(it)
-                Mosque(m.getString("id"), m.getString("name"), m.getDouble("lat"), m.getDouble("lng"), m.optString("addr"))
+                Mosque(
+                    m.getString("id"), m.getString("name"), m.getDouble("lat"), m.getDouble("lng"), m.optString("addr"),
+                    category = m.optString("cat", "Moschee")
+                )
             }
         } catch (e: Exception) {
         }
@@ -104,7 +108,8 @@ object Mosques {
                             adhan = jsonToMap(m.optJSONObject("adhan")),
                             iqamah = jsonToMap(m.optJSONObject("iqamah")),
                             custom = true,
-                            fetchedAt = m.optLong("at", 0L)
+                            fetchedAt = m.optLong("at", 0L),
+                            category = m.optString("cat", "Moschee")
                         )
                     )
                 }
@@ -125,7 +130,7 @@ object Mosques {
                     .put("id", m.id).put("name", m.name).put("lat", m.lat).put("lng", m.lng)
                     .put("addr", m.address).put("source", m.source).put("url", m.url ?: "")
                     .put("adhan", mapToJson(m.adhan)).put("iqamah", mapToJson(m.iqamah))
-                    .put("at", m.fetchedAt)
+                    .put("at", m.fetchedAt).put("cat", m.category)
             )
         }
         val ovo = JSONObject()
@@ -218,7 +223,10 @@ object Mosques {
                 val items = fetchOsm(lat, lng)
                 val arr = JSONArray()
                 items.forEach {
-                    arr.put(JSONObject().put("id", it.id).put("name", it.name).put("lat", it.lat).put("lng", it.lng).put("addr", it.address))
+                    arr.put(
+                        JSONObject().put("id", it.id).put("name", it.name).put("lat", it.lat).put("lng", it.lng)
+                            .put("addr", it.address).put("cat", it.category)
+                    )
                 }
                 osmFile(app).writeText(
                     JSONObject().put("at", System.currentTimeMillis()).put("lat", lat).put("lng", lng).put("items", arr).toString()
@@ -236,15 +244,27 @@ object Mosques {
         }.start()
     }
 
+    private val nameRegex = Regex(
+        "(?i)moschee|mosque|masjid|mesjid|mescid|camii|cami\\b|džamija|dzamija|džamije|musalla|mussala|musalla|gebetsraum|gebetshaus|islamisch|islamic|islamski|islamsk|İslam|islam\\b"
+    )
+    private val excludedAmenity = setOf(
+        "grave_yard", "school", "kindergarten", "restaurant", "fast_food", "cafe", "bank", "pharmacy",
+        "doctors", "dentist", "hospital", "clinic", "parking", "fuel", "university", "college", "library"
+    )
+
     private fun fetchOsm(lat: Double, lng: Double): List<Mosque> {
-        val q = "[out:json][timeout:25];" +
-            "(nwr[\"amenity\"=\"place_of_worship\"][\"religion\"=\"muslim\"](around:25000,$lat,$lng););" +
-            "out center tags;"
+        val a = "(around:25000,$lat,$lng)"
+        val q = "[out:json][timeout:40];(" +
+            "nwr[\"amenity\"=\"place_of_worship\"][\"religion\"=\"muslim\"]$a;" +
+            "nwr[\"religion\"=\"muslim\"]$a;" +
+            "nwr[\"building\"=\"mosque\"]$a;" +
+            "nwr[\"name\"~\"Moschee|Mosque|Masjid|Mesjid|Mescid|Camii|Cami|Džamija|Dzamija|Musalla|Mussala|Gebetsraum|Islamisch|Islamic|Islamski\",i]$a;" +
+            ");out center tags;"
         val conn = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
         conn.connectTimeout = 20_000
-        conn.readTimeout = 45_000
+        conn.readTimeout = 60_000
         conn.setRequestProperty("User-Agent", UA)
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
         conn.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
@@ -255,16 +275,52 @@ object Mosques {
         for (i in 0 until els.length()) {
             val e = els.getJSONObject(i)
             val tags = e.optJSONObject("tags") ?: JSONObject()
+            if (tags.has("shop")) continue
+            if (tags.optString("amenity") in excludedAmenity) continue
+            if (tags.optString("landuse") == "cemetery") continue
+            val rel = tags.optString("religion")
+            if (rel.isNotBlank() && rel != "muslim") continue
             val center = e.optJSONObject("center")
             val la = if (e.has("lat")) e.getDouble("lat") else center?.getDouble("lat") ?: continue
             val lo = if (e.has("lon")) e.getDouble("lon") else center?.getDouble("lon") ?: continue
-            val name = tags.optString("name").ifBlank { tags.optString("name:de").ifBlank { "Moschee" } }
+            val rawName = tags.optString("name").ifBlank { tags.optString("name:de") }
+            val worship = tags.optString("amenity") == "place_of_worship" || tags.optString("building") == "mosque"
+            // Ohne religion=muslim und ohne Gebetsort: nur aufnehmen, wenn der Name eindeutig passt
+            if (rel.isBlank() && !worship && !nameRegex.containsMatchIn(rawName)) continue
+            val isMosque = worship && (tags.optString("place_of_worship") != "musalla") ||
+                Regex("(?i)moschee|mosque|masjid|mescid|camii|džamija|dzamija").containsMatchIn(rawName)
+            val cat = if (isMosque) "Moschee" else "Gebetsraum / Verein"
+            val name = rawName.ifBlank { if (isMosque) "Moschee" else "Gebetsraum" }
             val addr = listOf(tags.optString("addr:street"), tags.optString("addr:housenumber"))
                 .filter { it.isNotBlank() }.joinToString(" ")
-            out.add(Mosque(e.getString("type") + e.getLong("id"), name, la, lo, addr))
+            out.add(Mosque(e.getString("type") + e.getLong("id"), name, la, lo, addr, category = cat))
         }
-        return out
+        // Doppelte (z. B. Gebäude + Punkt derselben Moschee) zusammenfassen
+        val unique = ArrayList<Mosque>()
+        out.sortedBy { if (it.category == "Moschee") 0 else 1 }.forEach { m ->
+            if (unique.none { distance(it.lat, it.lng, m.lat, m.lng) < 40f }) unique.add(m)
+        }
+        return unique
     }
+
+    /** Link an eine vorhandene Moschee hängen: sie wird zur eigenen Moschee mit Zeiten. */
+    fun attachLink(ctx: Context, m: Mosque, d: Draft): Mosque {
+        val nm = if (m.name == "Moschee" || m.name == "Gebetsraum") d.name else m.name
+        val newM = m.copy(
+            id = if (m.custom) m.id else "own-" + m.id,
+            name = nm,
+            address = m.address.ifBlank { d.address },
+            source = d.source, url = d.url,
+            adhan = d.adhan, iqamah = if (d.iqamah.isNotEmpty()) d.iqamah else m.iqamah,
+            custom = true, fetchedAt = System.currentTimeMillis()
+        )
+        addOwn(ctx, newM)
+        return newM
+    }
+
+    /** Wird alle Moscheen-Daten als geladen anzeigen (für Diagnose). */
+    fun countOsm(): Int = osm?.size ?: 0
+    fun countOwn(): Int = own?.size ?: 0
 
     // ---------------- Adresse → Position (OpenStreetMap Nominatim) ----------------
 
@@ -411,6 +467,35 @@ object Mosques {
         val addr = Regex("(?is)<h2[^>]*>(.*?)</h2>").find(html)?.groupValues?.get(1)?.let { strip(it) } ?: ""
         val (adhan, iq) = parseTimes(strip(html))
         return Draft(name, addr, null, null, if (u.contains("masjidbox", true)) "MasjidBox" else "Webseite", u, adhan, iq)
+    }
+
+    private fun slugs(name: String): List<String> {
+        val base = name.trim().lowercase()
+        fun clean(x: String) = x.replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        val de = base.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        val plain = java.text.Normalizer.normalize(base.replace("ß", "ss"), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+        return listOf(clean(de), clean(plain)).filter { it.isNotBlank() }.distinct()
+    }
+
+    /** Sucht eine Moschee per Name bei MasjidBox und Mawaqit (probiert die üblichen Links durch). */
+    fun searchByName(name: String): Draft? {
+        val urls = slugs(name).flatMap {
+            listOf(
+                "https://masjidbox.com/gebetszeiten/$it",
+                "https://masjidbox.com/prayer-times/$it",
+                "https://mawaqit.net/de/$it",
+                "https://mawaqit.net/de/m/$it"
+            )
+        }
+        for (u in urls) {
+            try {
+                val d = fetchDraft(u)
+                if (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty()) return d
+            } catch (e: Exception) {
+            }
+        }
+        return null
     }
 
     /** Eigene Moscheen mit Link: Zeiten höchstens alle 12 Stunden neu holen. */

@@ -176,6 +176,21 @@ object Notifs {
         b.setProgress(100, p, false)
     }
 
+    /** Kurzer Text für den Chip in der Statusleiste, z. B. „Mit. 2:32“ oder „Asr 18m“. */
+    fun chipText(ev: Ev, msLeft: Long): String {
+        val name = when (ev.kind) {
+            Kind.MIDNIGHT -> "Mit."
+            Kind.LAST_THIRD -> "Dritt."
+            Kind.MAGHRIB -> "Magh."
+            Kind.SUNRISE -> "Shur."
+            Kind.DHUHR -> if (ev.title == "Jumuah") "Jum." else "Dhuhr"
+            else -> ev.kind.short
+        }
+        val mins = ((msLeft + 59_999L) / 60_000L).coerceAtLeast(0)
+        val t = if (mins >= 60) "${mins / 60}:${"%02d".format(mins % 60)}" else "${mins}m"
+        return "$name $t"
+    }
+
     fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         val now = System.currentTimeMillis()
@@ -203,7 +218,7 @@ object Notifs {
             .setTimeoutAfter((ev.at - now + 60_000L).coerceAtLeast(60_000L))
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addExtras(extras)
-        val chip = if (minsLeft >= 60) "${ev.title} ${minsLeft / 60}:${"%02d".format(minsLeft % 60)}" else "${ev.title} $minsLeft Min"
+        val chip = chipText(ev, ev.at - now)
         applyLiveStyle(b, done, chip, if (isMid) 0xFFA5A5FF.toInt() else 0xFF4FD6BC.toInt())
         nm.notify(LIVE_ID, b.build())
     }

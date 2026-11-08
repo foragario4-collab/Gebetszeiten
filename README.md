@@ -12,7 +12,9 @@ Islamische Gebetszeiten-App für Android (läuft auch auf GrapheneOS ohne Google
 - Hell / Dunkel / Automatisch – auch für die Widgets
 - Widgets: großes Widget (nächstes Gebet immer in der Mitte) und kleines Widget mit Countdown
 - Qibla: rechteckiger Kompass + Moscheen-Karte (MapLibre/OpenStreetMap, ohne Google), nur Moscheen, Tippen zeigt Adhan & Iqamah
-- Moscheen-Liste nach Entfernung mit nächstem Gebet + Iqamah
+- Moscheen-Blatt zum Hoch-/Runterziehen: Liste nach Entfernung, nächstes Gebet + Iqamah, „Keine Zeiten verfügbar“ mit Link hinzufügen
+- Findet Moscheen und Gebetsräume/Kulturvereine (OpenStreetMap)
+- Diagnose in den Einstellungen
 - Moschee hinzufügen per MasjidBox-/Mawaqit-Link, Punkt auf der Karte oder Adresse; Iqamah von Hand bearbeitbar
 - Live-Countdown nach Isha bis Mitternacht, danach bis Fajr
 - Moschee-Radar: live die nächste Moschee in der Mitteilung, Hinweis wenn man in der Nähe ist und bald gebetet wird
