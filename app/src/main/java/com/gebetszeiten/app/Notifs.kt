@@ -145,7 +145,7 @@ object Notifs {
      * Ab Android 16: ProgressStyle (Balken auch eingeklappt / auf dem Sperrbildschirm)
      * + kurzer Text für den Statusleisten-Chip. Ältere Versionen: normaler Balken.
      */
-    fun applyLiveStyle(b: Notification.Builder, pct: Int, chip: String) {
+    fun applyLiveStyle(b: Notification.Builder, pct: Int, chip: String, color: Int = 0xFF4FD6BC.toInt()) {
         val p = pct.coerceIn(0, 100)
         if (Build.VERSION.SDK_INT >= 36) {
             try {
@@ -155,7 +155,7 @@ object Notifs {
                     val segCls = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
                     val seg = segCls.getConstructor(Int::class.javaPrimitiveType).newInstance(100)
                     try {
-                        segCls.getMethod("setColor", Int::class.javaPrimitiveType).invoke(seg, 0xFF4FD6BC.toInt())
+                        segCls.getMethod("setColor", Int::class.javaPrimitiveType).invoke(seg, color)
                     } catch (e: Throwable) {
                     }
                     psCls.getMethod("setProgressSegments", java.util.List::class.java).invoke(ps, listOf(seg))
@@ -184,12 +184,14 @@ object Notifs {
         val done = ((now - start) * 100 / total).toInt().coerceIn(0, 100)
         val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
         val minsLeft = ((ev.at - now + 59_999L) / 60_000L).coerceAtLeast(0)
+        val isMid = ev.kind == Kind.MIDNIGHT
+        val col = if (isMid) 0xFF5E5CE6.toInt() else ACCENT
         val b = Notification.Builder(ctx, CH_LIVE)
             .setSmallIcon(R.drawable.ic_notif)
-            .setColor(ACCENT)
+            .setColor(col)
             .setContentTitle("${ev.title} um ${Fmt.time(ev.at)}")
-            .setContentText("Countdown bis zum Gebet")
-            .setSubText("Nächstes Gebet")
+            .setContentText(if (isMid) "Ende der Isha-Zeit" else "Countdown bis zum Gebet")
+            .setSubText(if (isMid) "Ende der Isha-Zeit" else "Nächstes Gebet")
             .setContentIntent(openApp(ctx))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -201,7 +203,8 @@ object Notifs {
             .setTimeoutAfter((ev.at - now + 60_000L).coerceAtLeast(60_000L))
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addExtras(extras)
-        applyLiveStyle(b, done, "${ev.title} $minsLeft Min")
+        val chip = if (minsLeft >= 60) "${ev.title} ${minsLeft / 60}:${"%02d".format(minsLeft % 60)}" else "${ev.title} $minsLeft Min"
+        applyLiveStyle(b, done, chip, if (isMid) 0xFFA5A5FF.toInt() else 0xFF4FD6BC.toInt())
         nm.notify(LIVE_ID, b.build())
     }
 }

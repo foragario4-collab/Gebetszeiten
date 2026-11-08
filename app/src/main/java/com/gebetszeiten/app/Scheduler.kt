@@ -14,14 +14,14 @@ import java.time.LocalTime
 object Scheduler {
     enum class Act { WIDGET, PRAYER, REMINDER, LIVE }
 
-    data class Action(val at: Long, val act: Act, val ev: Ev?)
+    data class Action(val at: Long, val act: Act, val ev: Ev?, val start: Long = 0L)
 
     const val ACTION_FIRE = "com.gebetszeiten.app.FIRE"
 
     fun actions(now: Long): List<Action> {
         val out = ArrayList<Action>()
         val evs = Times.around(now)
-        for (ev in evs) {
+        for ((idx, ev) in evs.withIndex()) {
             out.add(Action(ev.at, Act.WIDGET, ev))
             val mode = Prefs.mode(ev.kind)
             if (mode > 0) {
@@ -30,11 +30,23 @@ object Scheduler {
                     out.add(Action(ev.at - Prefs.reminder * 60_000L, Act.REMINDER, ev))
                 }
             }
-            if (ev.kind.prayer && Prefs.live) {
-                var t = ev.at - Prefs.liveMin * 60_000L
+            // Live-Countdown: normal X Min vorher. Nach Isha bis Mitternacht, nach Mitternacht bis Fajr.
+            val prev = evs.getOrNull(idx - 1)
+            val start: Long? = when {
+                !Prefs.live -> null
+                ev.kind == Kind.MIDNIGHT ->
+                    evs.subList(0, idx).lastOrNull { it.kind == Kind.ISHA }?.at
+                ev.kind == Kind.FAJR ->
+                    evs.subList(0, idx).lastOrNull { it.kind == Kind.MIDNIGHT }?.at
+                        ?: (ev.at - Prefs.liveMin * 60_000L)
+                ev.kind.prayer -> ev.at - Prefs.liveMin * 60_000L
+                else -> null
+            }
+            if (start != null && prev != null) {
+                var t = maxOf(start, prev.at)
                 while (t < ev.at) {
-                    out.add(Action(t, Act.LIVE, ev))
-                    t += 60_000L
+                    out.add(Action(t, Act.LIVE, ev, start))
+                    t += if (ev.at - t > 3_600_000L) 300_000L else 60_000L
                 }
             }
         }
@@ -86,9 +98,9 @@ object Scheduler {
         due.filter { it.act == Act.REMINDER && it.ev !in prayers }
             .mapNotNull { it.ev }
             .forEach { Notifs.reminder(ctx, it) }
-        due.filter { it.act == Act.LIVE }.mapNotNull { it.ev }
+        due.filter { it.act == Act.LIVE && it.ev != null }
             .lastOrNull()
-            ?.let { if (it.at > now) Notifs.live(ctx, it) }
+            ?.let { a -> val e = a.ev!!; if (e.at > now) Notifs.live(ctx, e, a.start) }
 
         Widgets.updateAll(ctx)
         schedule(ctx)

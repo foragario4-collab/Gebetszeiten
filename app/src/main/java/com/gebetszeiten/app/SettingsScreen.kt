@@ -150,14 +150,21 @@ fun SettingsScreen(v: Int) {
         val fa = if (m.id == "custom") Prefs.customFajr.toDouble() else m.fajr
         val ia = if (m.id == "custom") Prefs.customIsha.toDouble() else m.isha
         val ishaText = if (m.ishaMinutes > 0) "Isha ${m.ishaMinutes} Min nach Maghrib" else "Isha $ia°"
+        Section("Asr") {
+            CheckRow("Standard", Prefs.asr == 1, first = true, sub = "Schafiʿi, Maliki, Hanbali") {
+                Prefs.asr = 1
+                changed()
+            }
+            CheckRow("Hanafi", Prefs.asr == 2, sub = "Schatten doppelt so lang") {
+                Prefs.asr = 2
+                changed()
+            }
+        }
+
         Section("Berechnung", footer = "Fajr $fa° · $ishaText. Wähle die Methode deiner Moschee.") {
-            ValueRow("Methode", m.name, first = true) {
-                choice = Choice(
-                    "Berechnungsmethode",
-                    PrayerCalc.methods.map { it.name },
-                    PrayerCalc.methods.indexOfFirst { it.id == m.id }
-                ) { i ->
-                    Prefs.method = PrayerCalc.methods[i].id
+            PrayerCalc.methods.forEachIndexed { i, me ->
+                CheckRow(me.name, me.id == m.id, first = i == 0) {
+                    Prefs.method = me.id
                     changed()
                 }
             }
@@ -168,10 +175,6 @@ fun SettingsScreen(v: Int) {
                 StepperRow("Isha-Winkel", "%.1f°".format(Prefs.customIsha),
                     onMinus = { Prefs.customIsha = (Prefs.customIsha - 0.5f).coerceAtLeast(10f); changed() },
                     onPlus = { Prefs.customIsha = (Prefs.customIsha + 0.5f).coerceAtMost(22f); changed() })
-            }
-            SegRow("Asr", listOf("Standard", "Hanafi"), Prefs.asr - 1) { i ->
-                Prefs.asr = i + 1
-                changed()
             }
             val hl = listOf("angle" to "Winkelbasiert", "middle" to "Mitte der Nacht", "seventh" to "Ein Siebtel")
             ValueRow("Hohe Breitengrade", hl.firstOrNull { it.first == Prefs.highLat }?.second ?: "Winkelbasiert") {

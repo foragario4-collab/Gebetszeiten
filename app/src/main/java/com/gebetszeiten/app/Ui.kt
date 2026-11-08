@@ -33,6 +33,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.window.Dialog
 
 data class Pal(
@@ -232,6 +238,29 @@ fun SegRow(label: String, options: List<String>, selected: Int, first: Boolean =
     }
 }
 
+/** Grüner Haken wie bei Apple. */
+@Composable
+fun GreenCheck(visible: Boolean = true) {
+    Canvas(Modifier.size(20.dp)) {
+        if (!visible) return@Canvas
+        val w = size.width
+        val path = Path().apply {
+            moveTo(w * 0.17f, w * 0.52f)
+            lineTo(w * 0.38f, w * 0.73f)
+            lineTo(w * 0.83f, w * 0.27f)
+        }
+        drawPath(path, Color(0xFF34C759), style = Stroke(width = w * 0.13f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+@Composable
+fun CheckRow(label: String, checked: Boolean, first: Boolean = false, sub: String? = null, onClick: () -> Unit) {
+    RowBase(first, onClick) {
+        LabelCol(label, sub)
+        GreenCheck(checked)
+    }
+}
+
 data class Choice(val title: String, val options: List<String>, val selected: Int, val onPick: (Int) -> Unit)
 
 @Composable
@@ -256,7 +285,7 @@ fun ChoiceDialog(c: Choice, onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Txt(o, 16, modifier = Modifier.weight(1f))
-                    if (i == c.selected) Txt("✓", 17, FontWeight.SemiBold, p.accentText)
+                    GreenCheck(i == c.selected)
                 }
             }
             Spacer(Modifier.height(4.dp))
