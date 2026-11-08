@@ -139,3 +139,30 @@ object Hijri {
         ""
     }
 }
+
+/** Datumsanzeige je nach Einstellung: 0 = Hijri, 1 = Gregorianisch, 2 = beides. */
+object DateText {
+    private fun greg(d: LocalDate): String =
+        d.format(DateTimeFormatter.ofPattern("EEE, d. MMM yyyy", Locale.GERMAN))
+
+    private fun gregNum(d: LocalDate): String =
+        d.format(DateTimeFormatter.ofPattern("d.M.yyyy", Locale.GERMAN))
+
+    fun widget(d: LocalDate): String = when (Prefs.dateMode) {
+        1 -> greg(d)
+        2 -> greg(d) + "\n" + Hijri.text(d)
+        else -> Hijri.text(d)
+    }
+
+    fun compact(d: LocalDate): String = when (Prefs.dateMode) {
+        1 -> greg(d)
+        2 -> gregNum(d) + " · " + Hijri.short(d)
+        else -> Hijri.text(d)
+    }
+
+    /** Kopfzeile in der App */
+    fun headerTop(d: LocalDate): String =
+        d.format(DateTimeFormatter.ofPattern("EEEE, d. MMMM yyyy", Locale.GERMAN))
+
+    fun headerSub(d: LocalDate): String? = if (Prefs.dateMode == 1) null else Hijri.text(d)
+}

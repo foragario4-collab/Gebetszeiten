@@ -7,11 +7,13 @@ Islamische Gebetszeiten-App für Android (läuft auch auf GrapheneOS ohne Google
 - Asr Standard / Hanafi, Regel für hohe Breitengrade
 - Islamische Mitternacht und letztes Drittel der Nacht
 - Mitteilungen pro Gebet: Aus / Ton / Adhan (eigene Audiodatei, extra Fajr-Adhan möglich)
-- Erinnerung vorher, Live-Countdown (ab Android 16 als Live-Update)
+- Erinnerung vorher, Live-Countdown mit Ladebalken (ab Android 16 als Live-Update, auch auf dem Sperrbildschirm)
 - Zeitkorrektur in Minuten pro Gebet, Hijri-Korrektur, 24-Stunden-Format
 - Hell / Dunkel / Automatisch – auch für die Widgets
 - Widgets: großes Widget (nächstes Gebet immer in der Mitte) und kleines Widget mit Countdown
-- Qibla-Kompass
+- Qibla: rechteckiger Kompass + Moscheen-Karte (MapLibre/OpenStreetMap, ohne Google), nur Moscheen, Tippen zeigt Adhan & Iqamah
+- Moschee-Radar: live die nächste Moschee in der Mitteilung, Hinweis wenn man in der Nähe ist und bald gebetet wird
+- Kalender: Hijri, Gregorianisch oder beides
 
 ## APK bauen
 1. Den ganzen Ordnerinhalt in ein GitHub-Repository hochladen (inklusive `.github`-Ordner).

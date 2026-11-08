@@ -8,7 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.os.Build
 import android.os.SystemClock
+import android.util.SizeF
 import android.widget.RemoteViews
 
 class MediumWidget : AppWidgetProvider() {
@@ -61,12 +63,25 @@ object Widgets {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
+    /** Großes Widget: ab Android 12 je nach Größe kompakt oder voll. */
     fun medium(ctx: Context): RemoteViews {
+        if (Build.VERSION.SDK_INT >= 31) {
+            return RemoteViews(
+                mapOf(
+                    SizeF(200f, 40f) to mediumViews(ctx, true),
+                    SizeF(200f, 125f) to mediumViews(ctx, false)
+                )
+            )
+        }
+        return mediumViews(ctx, false)
+    }
+
+    private fun mediumViews(ctx: Context, compact: Boolean): RemoteViews {
         val now = System.currentTimeMillis()
         val dark = isDark(ctx)
         val text = if (dark) Color.WHITE else Color.parseColor("#1C1C1E")
         val sub = if (dark) Color.parseColor("#AEAEB2") else Color.parseColor("#6C6C70")
-        val v = RemoteViews(ctx.packageName, R.layout.widget_medium)
+        val v = RemoteViews(ctx.packageName, if (compact) R.layout.widget_medium_compact else R.layout.widget_medium)
         v.setInt(R.id.w_root, "setBackgroundResource", if (dark) R.drawable.wbg_dark else R.drawable.wbg_light)
 
         val evs = Times.forWidget(now)
@@ -74,11 +89,13 @@ object Widgets {
         val next = evs[ni]
         val today = Times.today(now)
 
-        v.setTextViewText(R.id.w_place, Prefs.place)
-        v.setTextColor(R.id.w_place, sub)
+        if (!compact) {
+            v.setTextViewText(R.id.w_place, Prefs.place)
+            v.setTextColor(R.id.w_place, sub)
+        }
         v.setTextViewText(R.id.w_next, next.title)
         v.setTextColor(R.id.w_next, text)
-        v.setTextViewText(R.id.w_hijri, Hijri.short(today))
+        v.setTextViewText(R.id.w_hijri, if (compact) DateText.compact(today) else DateText.widget(today))
         v.setTextColor(R.id.w_hijri, sub)
         v.setChronometer(R.id.w_chrono, SystemClock.elapsedRealtime() + (next.at - now), "in %s", true)
         v.setChronometerCountDown(R.id.w_chrono, true)
@@ -95,19 +112,21 @@ object Widgets {
             v.setInt(cells[i], "setBackgroundResource", bg)
             v.setTextViewText(names[i], e?.shortTitle ?: "")
             v.setTextViewText(times[i], e?.let { Fmt.time(it.at) } ?: "")
-            val evDate = e?.let { Times.today(it.at) }
-            val tag = when {
-                e == null -> ""
-                i == 1 -> "jetzt"
-                i == 2 -> "nächstes"
-                evDate != null && evDate.isAfter(today) -> "morgen"
-                evDate != null && evDate.isBefore(today) -> "gestern"
-                else -> " "
-            }
-            v.setTextViewText(tags[i], tag)
             v.setTextColor(names[i], c)
             v.setTextColor(times[i], c)
-            v.setTextColor(tags[i], c)
+            if (!compact) {
+                val evDate = e?.let { Times.today(it.at) }
+                val tag = when {
+                    e == null -> ""
+                    i == 1 -> "jetzt"
+                    i == 2 -> "nächstes"
+                    evDate != null && evDate.isAfter(today) -> "morgen"
+                    evDate != null && evDate.isBefore(today) -> "gestern"
+                    else -> " "
+                }
+                v.setTextViewText(tags[i], tag)
+                v.setTextColor(tags[i], c)
+            }
         }
         v.setOnClickPendingIntent(R.id.w_root, openApp(ctx))
         return v

@@ -110,6 +110,23 @@ object Prefs {
         get() = sp.getBoolean("wThird", true)
         set(v) = edit { putBoolean("wThird", v) }
 
+    /** 0 = Hijri, 1 = Gregorianisch, 2 = beides */
+    var dateMode: Int
+        get() = sp.getInt("dateMode", 2)
+        set(v) = edit { putInt("dateMode", v) }
+
+    var radar: Boolean
+        get() = sp.getBoolean("radar", false)
+        set(v) = edit { putBoolean("radar", v) }
+    var radarRadius: Int
+        get() = sp.getInt("radarRadius", 1500)
+        set(v) = edit { putInt("radarRadius", v) }
+    var radarAlertKey: String
+        get() = sp.getString("radarAlertKey", "")!!
+        set(v) {
+            sp.edit().putString("radarAlertKey", v).apply()
+        }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

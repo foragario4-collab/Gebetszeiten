@@ -214,7 +214,8 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (i == selected) p.seg else Color.Transparent)
                     .clickable { onSelect(i) }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .heightIn(min = 34.dp)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Txt(o, 13, if (i == selected) FontWeight.SemiBold else FontWeight.Normal)

@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingStart="10dp"
+    android:paddingEnd="10dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:background="@drawable/wbg_light">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
+
+        <TextView
+            android:id="@+id/w_next"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:textColor="#1C1C1E" />
+
+        <Chronometer
+            android:id="@+id/w_chrono"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:textColor="#6C6C70" />
+
+        <TextView
+            android:id="@+id/w_hijri"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="#6C6C70" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/c0"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/cell_light">
+
+            <TextView
+                android:id="@+id/n0"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+
+            <TextView
+                android:id="@+id/t0"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/c1"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/cell_light">
+
+            <TextView
+                android:id="@+id/n1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+
+            <TextView
+                android:id="@+id/t1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/c2"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/cell_light">
+
+            <TextView
+                android:id="@+id/n2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+
+            <TextView
+                android:id="@+id/t2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/c3"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/cell_light">
+
+            <TextView
+                android:id="@+id/n3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+
+            <TextView
+                android:id="@+id/t3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/c4"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/cell_light">
+
+            <TextView
+                android:id="@+id/n4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+
+            <TextView
+                android:id="@+id/t4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:includeFontPadding="false"
+                android:textColor="#1C1C1E" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

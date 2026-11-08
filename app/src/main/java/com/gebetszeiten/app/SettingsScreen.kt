@@ -273,6 +273,30 @@ fun SettingsScreen(v: Int) {
             ToggleRow("24-Stunden-Format", Prefs.use24) { Prefs.use24 = it; Widgets.updateAll(ctx) }
         }
 
+        // ---------- Kalender ----------
+        Section("Kalender", footer = "Gilt für die App und das Widget.") {
+            val dm = listOf("Hijri", "Gregorianisch", "Beides")
+            ValueRow("Datum anzeigen", dm[Prefs.dateMode.coerceIn(0, 2)], first = true) {
+                choice = Choice("Datum anzeigen", dm, Prefs.dateMode) { i ->
+                    Prefs.dateMode = i
+                    Widgets.updateAll(ctx)
+                }
+            }
+        }
+
+        // ---------- Moschee-Radar ----------
+        Section(
+            "Moschee-Radar",
+            footer = "Der Radar wird im Tab „Qibla“ auf der Karte eingeschaltet. Er zeigt live die nächste Moschee und meldet sich, wenn du in der Nähe bist und das Gebet bald beginnt."
+        ) {
+            val rr = listOf(500, 1000, 1500, 2000, 3000, 5000)
+            ValueRow("Hinweis-Umkreis", Mosques.fmtDist(Prefs.radarRadius.toFloat()), first = true) {
+                choice = Choice("Hinweis-Umkreis", rr.map { Mosques.fmtDist(it.toFloat()) }, rr.indexOf(Prefs.radarRadius)) { i ->
+                    Prefs.radarRadius = rr[i]
+                }
+            }
+        }
+
         // ---------- Widget ----------
         Section("Widget", footer = "Das nächste Gebet steht im großen Widget immer in der Mitte und rutscht mit der Zeit nach links.") {
             ToggleRow("Sonnenaufgang", Prefs.wSunrise, first = true) { Prefs.wSunrise = it; Widgets.updateAll(ctx) }

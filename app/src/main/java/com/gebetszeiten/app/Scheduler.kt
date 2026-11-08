@@ -31,7 +31,11 @@ object Scheduler {
                 }
             }
             if (ev.kind.prayer && Prefs.live) {
-                out.add(Action(ev.at - Prefs.liveMin * 60_000L, Act.LIVE, ev))
+                var t = ev.at - Prefs.liveMin * 60_000L
+                while (t < ev.at) {
+                    out.add(Action(t, Act.LIVE, ev))
+                    t += 60_000L
+                }
             }
         }
         // Tageswechsel: Widget um Mitternacht (Uhr) aktualisieren

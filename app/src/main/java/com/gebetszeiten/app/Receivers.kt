@@ -11,6 +11,11 @@ class AlarmReceiver : BroadcastReceiver() {
         Notifs.channels(ctx)
         when (intent.action) {
             Scheduler.ACTION_FIRE -> Scheduler.handle(ctx)
+            Notifs.ACTION_MOSQUE -> Notifs.mosqueReminder(
+                ctx,
+                intent.getStringExtra("title") ?: "Gebet",
+                intent.getStringExtra("text") ?: ""
+            )
             Notifs.ACTION_DONE -> {
                 val id = intent.getIntExtra("id", 0)
                 ctx.getSystemService(NotificationManager::class.java)?.cancel(id)

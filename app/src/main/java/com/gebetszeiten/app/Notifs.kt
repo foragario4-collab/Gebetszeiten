@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Build
 import android.os.Bundle
 
 object Notifs {
@@ -52,7 +53,7 @@ object Notifs {
         nm.createNotificationChannels(listOf(prayer, quiet, remind, live))
     }
 
-    private fun openApp(ctx: Context): PendingIntent = PendingIntent.getActivity(
+    fun openApp(ctx: Context): PendingIntent = PendingIntent.getActivity(
         ctx, 0,
         Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -105,6 +106,22 @@ object Notifs {
         nm.notify(prayerId(ev.kind), buildPrayer(ctx, ev, CH_PRAYER))
     }
 
+    const val ACTION_MOSQUE = "com.gebetszeiten.app.MOSQUE_REMIND"
+
+    fun mosqueReminder(ctx: Context, title: String, text: String) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        val n = Notification.Builder(ctx, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_notif)
+            .setColor(ACCENT)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(openApp(ctx))
+            .setAutoCancel(true)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .build()
+        nm.notify(90, n)
+    }
+
     fun reminder(ctx: Context, ev: Ev) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         val min = ((ev.at - System.currentTimeMillis() + 30_000L) / 60_000L).coerceAtLeast(1)
@@ -124,6 +141,41 @@ object Notifs {
      * Laufender Countdown. Auf Android 16+ wird zusätzlich die Hervorhebung als
      * „Live-Update“ angefragt (Statusleisten-Chip, oben auf dem Sperrbildschirm).
      */
+    /**
+     * Ab Android 16: ProgressStyle (Balken auch eingeklappt / auf dem Sperrbildschirm)
+     * + kurzer Text für den Statusleisten-Chip. Ältere Versionen: normaler Balken.
+     */
+    fun applyLiveStyle(b: Notification.Builder, pct: Int, chip: String) {
+        val p = pct.coerceIn(0, 100)
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                val psCls = Class.forName("android.app.Notification\$ProgressStyle")
+                val ps = psCls.getConstructor().newInstance()
+                try {
+                    val segCls = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
+                    val seg = segCls.getConstructor(Int::class.javaPrimitiveType).newInstance(100)
+                    try {
+                        segCls.getMethod("setColor", Int::class.javaPrimitiveType).invoke(seg, 0xFF4FD6BC.toInt())
+                    } catch (e: Throwable) {
+                    }
+                    psCls.getMethod("setProgressSegments", java.util.List::class.java).invoke(ps, listOf(seg))
+                } catch (e: Throwable) {
+                }
+                psCls.getMethod("setProgress", Int::class.javaPrimitiveType).invoke(ps, p)
+                b.setStyle(ps as Notification.Style)
+                try {
+                    Notification.Builder::class.java.methods
+                        .firstOrNull { it.name == "setShortCriticalText" }
+                        ?.invoke(b, chip)
+                } catch (e: Throwable) {
+                }
+                return
+            } catch (e: Throwable) {
+            }
+        }
+        b.setProgress(100, p, false)
+    }
+
     fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
         val now = System.currentTimeMillis()
@@ -131,7 +183,8 @@ object Notifs {
         val total = (ev.at - start).coerceAtLeast(1)
         val done = ((now - start) * 100 / total).toInt().coerceIn(0, 100)
         val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
-        val n = Notification.Builder(ctx, CH_LIVE)
+        val minsLeft = ((ev.at - now + 59_999L) / 60_000L).coerceAtLeast(0)
+        val b = Notification.Builder(ctx, CH_LIVE)
             .setSmallIcon(R.drawable.ic_notif)
             .setColor(ACCENT)
             .setContentTitle("${ev.title} um ${Fmt.time(ev.at)}")
@@ -144,12 +197,11 @@ object Notifs {
             .setChronometerCountDown(true)
             .setWhen(ev.at)
             .setShowWhen(true)
-            .setProgress(100, done, false)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setTimeoutAfter((ev.at - now + 60_000L).coerceAtLeast(60_000L))
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addExtras(extras)
-            .build()
-        nm.notify(LIVE_ID, n)
+        applyLiveStyle(b, done, "${ev.title} $minsLeft Min")
+        nm.notify(LIVE_ID, b.build())
     }
 }

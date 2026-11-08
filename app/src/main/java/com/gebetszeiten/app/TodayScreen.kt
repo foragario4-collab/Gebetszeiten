@@ -84,9 +84,9 @@ fun TodayScreen(v: Int) {
     ScreenColumn {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Txt(Fmt.dateLong(today).uppercase(), 13, FontWeight.SemiBold, p.sub)
+                Txt(DateText.headerTop(today).uppercase(), 13, FontWeight.SemiBold, p.sub)
                 Txt("Heute", 34, FontWeight.Bold)
-                Txt(Hijri.text(today), 15, color = p.sub)
+                DateText.headerSub(today)?.let { Txt(it, 15, color = p.sub) }
             }
             Box(
                 Modifier
