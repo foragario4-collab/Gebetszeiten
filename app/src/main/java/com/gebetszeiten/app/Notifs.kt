@@ -1,0 +1,155 @@
+package com.gebetszeiten.app
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.os.Bundle
+
+object Notifs {
+    const val CH_PRAYER = "gebet_ton"
+    const val CH_QUIET = "gebet_leise"
+    const val CH_REMIND = "erinnerung"
+    const val CH_LIVE = "live"
+    const val ACTION_DONE = "com.gebetszeiten.app.DONE"
+    const val LIVE_ID = 50
+    const val ADHAN_ID = 60
+
+    private const val ACCENT = 0xFF0B6E5F.toInt()
+
+    fun prayerId(k: Kind) = 100 + k.ordinal
+    fun remindId(k: Kind) = 200 + k.ordinal
+
+    fun channels(ctx: Context) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        val prayer = NotificationChannel(CH_PRAYER, "Gebetszeit (mit Ton)", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Mitteilung zur Gebetszeit mit Ton"
+            setSound(
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
+            )
+            enableLights(true)
+            lightColor = Color.GREEN
+        }
+        val quiet = NotificationChannel(CH_QUIET, "Gebetszeit (Adhan)", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Mitteilung während der Adhan läuft"
+            setSound(null, null)
+        }
+        val remind = NotificationChannel(CH_REMIND, "Erinnerung vorher", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Erinnerung einige Minuten vor dem Gebet"
+        }
+        val live = NotificationChannel(CH_LIVE, "Live-Countdown", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "Laufender Countdown bis zum nächsten Gebet"
+            setSound(null, null)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+        nm.createNotificationChannels(listOf(prayer, quiet, remind, live))
+    }
+
+    private fun openApp(ctx: Context): PendingIntent = PendingIntent.getActivity(
+        ctx, 0,
+        Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    fun doneAction(ctx: Context, id: Int): Notification.Action {
+        val pi = PendingIntent.getBroadcast(
+            ctx, 1000 + id,
+            Intent(ctx, AlarmReceiver::class.java).setAction(ACTION_DONE).putExtra("id", id),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return Notification.Action.Builder(null, "Gebetet ✓", pi).build()
+    }
+
+    fun prayerTitle(ev: Ev) = "${ev.title} · ${Fmt.time(ev.at)}"
+
+    fun prayerText(ev: Ev): String = when (ev.kind) {
+        Kind.SUNRISE -> "Sonnenaufgang – die Fajr-Zeit ist zu Ende."
+        Kind.LAST_THIRD -> "Das letzte Drittel der Nacht beginnt – Zeit für Tahajjud."
+        Kind.MIDNIGHT -> "Islamische Mitternacht – Ende der Isha-Zeit."
+        else -> "Es ist Zeit für das ${ev.title}-Gebet."
+    }
+
+    fun buildPrayer(ctx: Context, ev: Ev, channel: String): Notification {
+        val id = prayerId(ev.kind)
+        val b = Notification.Builder(ctx, channel)
+            .setSmallIcon(R.drawable.ic_notif)
+            .setColor(ACCENT)
+            .setContentTitle(prayerTitle(ev))
+            .setContentText(prayerText(ev))
+            .setContentIntent(openApp(ctx))
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setWhen(ev.at)
+            .setShowWhen(true)
+        if (ev.kind.prayer) b.addAction(doneAction(ctx, id))
+        return b.build()
+    }
+
+    /** Zur Gebetszeit: Adhan (wenn gewählt und Datei vorhanden) oder Mitteilung mit Ton. */
+    fun prayerAlert(ctx: Context, ev: Ev) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.cancel(LIVE_ID)
+        nm.cancel(remindId(ev.kind))
+        val mode = Prefs.mode(ev.kind)
+        val uri = if (ev.kind == Kind.FAJR) (Prefs.fajrAdhanUri ?: Prefs.adhanUri) else Prefs.adhanUri
+        if (mode == 2 && uri != null && ev.kind.prayer) {
+            if (AdhanService.start(ctx, uri, ev)) return
+        }
+        nm.notify(prayerId(ev.kind), buildPrayer(ctx, ev, CH_PRAYER))
+    }
+
+    fun reminder(ctx: Context, ev: Ev) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        val min = ((ev.at - System.currentTimeMillis() + 30_000L) / 60_000L).coerceAtLeast(1)
+        val n = Notification.Builder(ctx, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_notif)
+            .setColor(ACCENT)
+            .setContentTitle("${ev.title} in $min Minuten")
+            .setContentText("Das ${ev.title}-Gebet beginnt um ${Fmt.time(ev.at)}.")
+            .setContentIntent(openApp(ctx))
+            .setAutoCancel(true)
+            .setTimeoutAfter((ev.at - System.currentTimeMillis()).coerceAtLeast(60_000L))
+            .build()
+        nm.notify(remindId(ev.kind), n)
+    }
+
+    /**
+     * Laufender Countdown. Auf Android 16+ wird zusätzlich die Hervorhebung als
+     * „Live-Update“ angefragt (Statusleisten-Chip, oben auf dem Sperrbildschirm).
+     */
+    fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        val now = System.currentTimeMillis()
+        val start = prevAt ?: (ev.at - Prefs.liveMin * 60_000L)
+        val total = (ev.at - start).coerceAtLeast(1)
+        val done = ((now - start) * 100 / total).toInt().coerceIn(0, 100)
+        val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
+        val n = Notification.Builder(ctx, CH_LIVE)
+            .setSmallIcon(R.drawable.ic_notif)
+            .setColor(ACCENT)
+            .setContentTitle("${ev.title} um ${Fmt.time(ev.at)}")
+            .setContentText("Countdown bis zum Gebet")
+            .setSubText("Nächstes Gebet")
+            .setContentIntent(openApp(ctx))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setWhen(ev.at)
+            .setShowWhen(true)
+            .setProgress(100, done, false)
+            .setCategory(Notification.CATEGORY_PROGRESS)
+            .setTimeoutAfter((ev.at - now + 60_000L).coerceAtLeast(60_000L))
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .addExtras(extras)
+            .build()
+        nm.notify(LIVE_ID, n)
+    }
+}

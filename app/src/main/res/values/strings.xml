@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Gebetszeiten</string>
+    <string name="widget_medium_desc">Gebetszeiten des Tages – das nächste Gebet immer in der Mitte</string>
+    <string name="widget_small_desc">Nächstes Gebet mit Countdown</string>
+</resources>

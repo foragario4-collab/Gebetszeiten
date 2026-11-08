@@ -1,0 +1,87 @@
+package com.gebetszeiten.app
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import java.util.Locale
+
+/** Standort ohne Google-Dienste – direkt über GPS / Netzwerk des Systems. */
+object Loc {
+
+    data class City(val name: String, val lat: Double, val lng: Double)
+
+    val cities = listOf(
+        City("Wien", 48.2082, 16.3738),
+        City("Graz", 47.0707, 15.4395),
+        City("Linz", 48.3069, 14.2858),
+        City("Salzburg", 47.8095, 13.0550),
+        City("Innsbruck", 47.2692, 11.4041),
+        City("Klagenfurt", 46.6247, 14.3053),
+        City("St. Pölten", 48.2047, 15.6256),
+        City("Bregenz", 47.5031, 9.7471),
+        City("Berlin", 52.5200, 13.4050),
+        City("München", 48.1351, 11.5820),
+        City("Zürich", 47.3769, 8.5417),
+        City("Istanbul", 41.0082, 28.9784),
+        City("Sarajevo", 43.8563, 18.4131),
+        City("Mekka", 21.4225, 39.8262)
+    )
+
+    @SuppressLint("MissingPermission")
+    fun fetch(ctx: Context, cb: (Location?) -> Unit) {
+        val lm = ctx.getSystemService(LocationManager::class.java)
+        if (lm == null) {
+            cb(null); return
+        }
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+        val last = providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
+        if (last != null && System.currentTimeMillis() - last.time < 30 * 60_000L) {
+            cb(last); return
+        }
+        if (providers.isEmpty()) {
+            cb(last); return
+        }
+        var answered = false
+        val main = Handler(Looper.getMainLooper())
+        val answer: (Location?) -> Unit = { loc ->
+            if (!answered) {
+                answered = true
+                cb(loc ?: last)
+            }
+        }
+        main.postDelayed({ answer(null) }, 25_000L)
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                lm.getCurrentLocation(providers.first(), null, ctx.mainExecutor) { answer(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                lm.requestSingleUpdate(providers.first(), { answer(it) }, Looper.getMainLooper())
+            }
+        } catch (e: Exception) {
+            answer(null)
+        }
+    }
+
+    /** Ortsname, falls das System einen Geocoder hat – sonst null. */
+    fun placeName(ctx: Context, lat: Double, lng: Double, cb: (String?) -> Unit) {
+        Thread {
+            val name = try {
+                if (Geocoder.isPresent()) {
+                    @Suppress("DEPRECATION")
+                    val list = Geocoder(ctx, Locale.GERMAN).getFromLocation(lat, lng, 1)
+                    list?.firstOrNull()?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+            Handler(Looper.getMainLooper()).post { cb(name) }
+        }.start()
+    }
+}
