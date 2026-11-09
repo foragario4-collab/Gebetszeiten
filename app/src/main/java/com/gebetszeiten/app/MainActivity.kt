@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
         }
         Scheduler.schedule(this)
         Widgets.updateAll(this)
+        Mosques.importSeeds(this) { }
         setContent { App() }
     }
 

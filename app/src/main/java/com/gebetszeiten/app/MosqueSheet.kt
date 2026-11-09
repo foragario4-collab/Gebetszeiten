@@ -282,12 +282,14 @@ fun BoxScope.MosqueBottomSheet(
                         Column(Modifier.weight(1f)) {
                             Txt(m.name, 15, FontWeight.SemiBold, maxLines = 1)
                             if (niq != null) {
-                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)} · ${t("arrival", Fmt.time(arr))}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else if (nx != null) {
-                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"} · ${t("arrival", Fmt.time(arr))}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else {
                                 Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
                             }
+                            // Ankunft immer in eigener Zeile – wird so nie abgeschnitten
+                            Txt(t("arrival", Fmt.time(arr)), 13, FontWeight.Medium, p.text, maxLines = 1)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -337,7 +339,7 @@ private fun MosqueDetail(
                 if (d != null && (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty())) {
                     onUpdated(Mosques.attachLink(ctx, m, d))
                 } else {
-                    info = t("not_found_times")
+                    info = t("not_found_times") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")
                 }
             }
         }.start()
@@ -356,9 +358,9 @@ private fun MosqueDetail(
             main.post {
                 busy = false
                 when {
-                    res == null -> info = t("page_failed")
+                    res == null -> info = t("page_failed") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")
                     res.adhan.isEmpty() && res.iqamah.isEmpty() ->
-                        info = t("no_times_found")
+                        info = t("no_times_found") + " (" + Mosques.lastFetchInfo + ")"
                     else -> onUpdated(Mosques.attachLink(ctx, m, res))
                 }
             }

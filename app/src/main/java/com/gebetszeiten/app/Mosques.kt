@@ -285,7 +285,7 @@ object Mosques {
 
     /** Mawaqit-Suche mit beliebigen Parametern (word=… oder lat=…&lon=…). */
     private fun mawaqitQuery(params: String): List<Mosque> {
-        val body = httpGet("https://mawaqit.net/api/2.0/mosque/search?$params").trim()
+        val body = httpGet("https://mawaqit.net/api/2.0/mosque/search?$params", browser = true).trim()
         val arr: JSONArray = when {
             body.startsWith("[") -> JSONArray(body)
             body.startsWith("{") -> JSONObject(body).let { o ->
@@ -380,13 +380,31 @@ object Mosques {
     fun fmtDist(m: Float): String =
         if (m < 1000f) "${(m / 10f).roundToInt() * 10} m" else "%.1f km".format(Locale.GERMAN, m / 1000f)
 
-    private fun httpGet(url: String): String {
+    private const val BROWSER_UA =
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+
+    /** Was beim letzten Laden einer Moschee-Seite passiert ist (für verständliche Fehlermeldungen). */
+    @Volatile
+    var lastFetchInfo: String = ""
+
+    /**
+     * [browser] = true: wie ein normaler Browser auftreten (für MasjidBox/Mawaqit-Seiten,
+     * die App-Anfragen sonst blocken). Für OpenStreetMap-Dienste die eigene Kennung (deren Regeln).
+     */
+    private fun httpGet(url: String, browser: Boolean = false): String {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 20_000
         conn.readTimeout = 30_000
         conn.instanceFollowRedirects = true
-        conn.setRequestProperty("User-Agent", UA)
-        conn.setRequestProperty("Accept-Language", "de,en;q=0.8")
+        conn.setRequestProperty("User-Agent", if (browser) BROWSER_UA else UA)
+        conn.setRequestProperty("Accept-Language", "de-AT,de;q=0.9,en;q=0.8")
+        if (browser) conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            conn.disconnect()
+            lastFetchInfo = "HTTP $code"
+            throw java.io.IOException("HTTP $code")
+        }
         val body = conn.inputStream.bufferedReader().use { it.readText() }
         conn.disconnect()
         return body
@@ -614,7 +632,12 @@ object Mosques {
         while (i < tok.size) {
             val key = labelMap[tok[i].lowercase().trim(':', ',', '.', '*')]
             if (key != null && key !in adhan) {
-                val t = timeAt(i + 1)
+                // „Jumuah 1 13 30“ → die „1“ ist die Nummer des Freitagsgebets, nicht die Stunde
+                val skip = if (tok.getOrNull(i + 1)?.matches(Regex("\\d")) == true && timeAt(i + 2) != null &&
+                    tok.getOrNull(i + 2)?.matches(Regex("\\d{1,2}(:\\d{2})?")) == true &&
+                    (timeAt(i + 1)?.first?.startsWith("0") == true)
+                ) 1 else 0
+                val t = timeAt(i + 1 + skip)
                 if (t != null) {
                     adhan[key] = t.first
                     var j = t.second
@@ -632,6 +655,48 @@ object Mosques {
             i++
         }
         return adhan to iq
+    }
+
+    /**
+     * Zeiten aus eingebetteten Skript-Daten lesen, z. B. "fajr":"05:22", "fajrIqamah":"06:07",
+     * "iqamah":{"isha":"19:00"} – egal in welcher Struktur, solange Gebetsname und Uhrzeit nah beieinander stehen.
+     */
+    private fun jsonTimes(html: String): Pair<Map<String, String>, Map<String, String>> {
+        val adhan = LinkedHashMap<String, String>()
+        val iq = LinkedHashMap<String, String>()
+        val keyRe = Regex("(?i)\"([a-z_]*?(fajr|fadjr|subh|dhuhr|duhr|zuhr|dohr|asr|assr|maghrib|isha|ishaa|jumu?a+h?|jummah)[a-z_]*)\"\\s*:\\s*\"(\\d{1,2}:\\d{2})")
+        for (m in keyRe.findAll(html)) {
+            val key = m.groupValues[1].lowercase()
+            val name = m.groupValues[2].lowercase()
+            val time = m.groupValues[3].padStart(5, '0')
+            val k = labelMap[name] ?: when {
+                name.startsWith("fa") || name == "subh" -> "FAJR"
+                name.startsWith("d") || name.startsWith("z") -> "DHUHR"
+                name.startsWith("a") -> "ASR"
+                name.startsWith("m") -> "MAGHRIB"
+                name.startsWith("i") -> "ISHA"
+                else -> "JUMUAH"
+            }
+            // Iqamah steht entweder im Schlüssel (fajrIqamah) oder kurz davor ("iqamah":{ ... "fajr":"06:07")
+            val before = html.substring(maxOf(0, m.range.first - 120), m.range.first).lowercase()
+            val isIq = key.contains("iqam") || key.contains("jamaa") || key.contains("jamat") ||
+                (before.lastIndexOf("iqam") > before.lastIndexOf("adhan").coerceAtLeast(before.lastIndexOf("athan")) && before.contains("iqam"))
+            if (isIq) iq.putIfAbsent(k, time) else adhan.putIfAbsent(k, time)
+        }
+        return adhan to iq
+    }
+
+    /** MasjidBox-Termine: "name":"🕌 Fadjr Gebet → 05:07","startDate":"2026-10-28T05:07…" – nur heute. */
+    private fun eventTimes(html: String): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        val today = java.time.LocalDate.now().toString()
+        val re = Regex("\"name\"\\s*:\\s*\"[^\"]*?([A-Za-zÀ-ÿ']+)\\s+(?:Gebet|Prayer|Prière|Namaz|Namazi)[^\"]*\"[^{}]*?\"startDate\"\\s*:\\s*\"(\\d{4}-\\d{2}-\\d{2})T(\\d{2}:\\d{2})")
+        for (m in re.findAll(html)) {
+            if (m.groupValues[2] != today) continue
+            val k = labelMap[m.groupValues[1].lowercase()] ?: continue
+            out.putIfAbsent(k, m.groupValues[3])
+        }
+        return out
     }
 
     private fun jsonStr(raw: String): String = try {
@@ -672,7 +737,8 @@ object Mosques {
     /** Lädt eine MasjidBox- oder Mawaqit-Seite und liest Name, Adresse, Position und Zeiten. */
     fun fetchDraft(url: String): Draft {
         val u = url.trim().let { if (it.startsWith("http")) it else "https://$it" }
-        val html = httpGet(u)
+        val html = httpGet(u, browser = true)
+        lastFetchInfo = "OK, ${html.length / 1024} kB"
         val title = Regex("(?is)<title[^>]*>(.*?)</title>").find(html)?.groupValues?.get(1)?.let { strip(it) }
             ?.takeIf { it.isNotBlank() }
             ?: Regex("(?is)<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"'](.*?)[\"']").find(html)?.groupValues?.get(1)?.let { decode(it) }
@@ -721,7 +787,12 @@ object Mosques {
         val name = cleaned.takeIf { it.isNotBlank() && !it.equals("Masjidbox", true) && !it.equals("Moschee", true) }
             ?: nameFromUrl(u)
         val addr = Regex("(?is)<h2[^>]*>(.*?)</h2>").find(html)?.groupValues?.get(1)?.let { strip(it) } ?: ""
-        val (adhan, iq) = parseTimes(strip(html))
+        val (a1, i1) = parseTimes(strip(html))
+        val (a2, i2) = jsonTimes(html)
+        val a3 = eventTimes(html)
+        val adhan = LinkedHashMap(a3).apply { putAll(a2); putAll(a1) }
+        val iq = LinkedHashMap(i2).apply { putAll(i1) }
+        if (adhan.isEmpty() && iq.isEmpty()) lastFetchInfo += ", keine Zeiten erkannt"
         return Draft(name, addr, null, null, if (u.contains("masjidbox", true)) "MasjidBox" else "Webseite", u, adhan, iq)
     }
 
@@ -752,6 +823,60 @@ object Mosques {
             }
         }
         return null
+    }
+
+    /**
+     * Vorinstallierte Wiener Moscheen (assets/seed_mosques.json) einmalig übernehmen:
+     * Seite laden (Position/Zeiten), sonst Adresse suchen. Läuft im Hintergrund.
+     */
+    fun importSeeds(ctx: Context, cb: () -> Unit) {
+        val app = ctx.applicationContext
+        val sp = app.getSharedPreferences("einstellungen", Context.MODE_PRIVATE)
+        val json = try {
+            JSONObject(app.assets.open("seed_mosques.json").bufferedReader().use { it.readText() })
+        } catch (e: Exception) {
+            return
+        }
+        val ver = json.optInt("version", 1)
+        if (sp.getInt("seedVersion", 0) >= ver) return
+        list(app)
+        val main = Handler(Looper.getMainLooper())
+        Thread {
+            val arr = json.getJSONArray("items")
+            var added = 0
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val url = o.getString("url")
+                if ((own ?: emptyList<Mosque>()).any { it.url == url }) continue
+                val name = o.optString("name")
+                val addr = o.optString("address")
+                val d = try {
+                    fetchDraft(url)
+                } catch (e: Exception) {
+                    null
+                }
+                val pos = if (d?.lat != null && d.lng != null) d.lat to d.lng
+                else geocode(addr.ifBlank { d?.address ?: "" }.ifBlank { "$name Wien" })
+                if (pos == null) continue
+                own?.add(
+                    Mosque(
+                        id = "seed-" + url.substringAfterLast('/'),
+                        name = name.ifBlank { d?.name ?: "Moschee" },
+                        lat = pos.first, lng = pos.second,
+                        address = addr.ifBlank { d?.address ?: "" },
+                        source = if (url.contains("mawaqit")) "Mawaqit" else "MasjidBox",
+                        url = url,
+                        adhan = d?.adhan ?: emptyMap(), iqamah = d?.iqamah ?: emptyMap(),
+                        custom = true, fetchedAt = if (d != null) System.currentTimeMillis() else 0L
+                    )
+                )
+                added++
+                Thread.sleep(1100) // Adresssuche nicht überlasten
+            }
+            saveOwn(app)
+            sp.edit().putInt("seedVersion", ver).apply()
+            if (added > 0) main.post { cb() }
+        }.start()
     }
 
     /** Eigene Moscheen mit Link: Zeiten höchstens alle 12 Stunden neu holen. */

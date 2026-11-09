@@ -253,6 +253,7 @@ fun MapScreen(v: Int) {
     }
 
     LaunchedEffect(Unit) {
+        Mosques.importSeeds(ctx) { reloadList() }
         Mosques.refreshOwnTimes(ctx) { reloadList() }
         if (permOk) locate(true)
         else perm.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -575,7 +576,7 @@ private fun AddMosqueDialog(onClose: () -> Unit, onSaved: (Mosque) -> Unit, onPi
         pos = null
         Thread {
             val d = Mosques.searchByName(query)
-            main.post { applyResult(d, t("nothing_found")) }
+            main.post { applyResult(d, t("nothing_found") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")) }
         }.start()
     }
 
@@ -593,7 +594,7 @@ private fun AddMosqueDialog(onClose: () -> Unit, onSaved: (Mosque) -> Unit, onPi
                 else Mosques.geocode(d.name)
                 Triple(d, ps, null as String?)
             } catch (e: Exception) {
-                Triple(null, null, t("page_failed"))
+                Triple(null, null, t("page_failed") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else ""))
             }
             main.post {
                 busy = false

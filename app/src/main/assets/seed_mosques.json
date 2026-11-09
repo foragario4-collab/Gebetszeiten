@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "items": [
+    {"name": "Orientalisches Kulturzentrum Al-Rahma", "address": "Kaiser-Ebersdorfer-Straße 45, 1110 Wien", "url": "https://masjidbox.com/gebetszeiten/orientalisches-kulturzentrum-al-rahma"},
+    {"name": "Baitul Mamur", "address": "Scheugasse 9, 1100 Wien", "url": "https://masjidbox.com/gebetszeiten/baitul-mamur-favoriten"},
+    {"name": "Attaysir", "address": "Pernerstorfergasse 24, 1100 Wien", "url": "https://masjidbox.com/gebetszeiten/attaysir"},
+    {"name": "Tewhid", "address": "Murlingengasse 61, 1120 Wien", "url": "https://masjidbox.com/gebetszeiten/tewhid"},
+    {"name": "Islamski centar Bošnjaka „Ebu Hanife“", "address": "Buchengasse 44, 1100 Wien", "url": "https://masjidbox.com/gebetszeiten/ic-ebu-hanife"},
+    {"name": "AL-NUR", "address": "Goldschlagstraße 36, 1150 Wien", "url": "https://masjidbox.com/gebetszeiten/al-nur-wien"},
+    {"name": "As-Salam Moschee", "address": "Am Schöpfwerk 31, 1120 Wien", "url": "https://masjidbox.com/gebetszeiten/as-salam-vienna"},
+    {"name": "Xhamia „Imam El Buhari“", "address": "", "url": "https://mawaqit.net/de/m/el-buhari-wien"},
+    {"name": "Muslimisches Zentrum Wien", "address": "", "url": "https://mawaqit.net/de/muslimisches-zentrum-wien-vienna-1200-austria"},
+    {"name": "Masjid AL-FAJR", "address": "", "url": "https://mawaqit.net/de/masjid-alfajr-vienna-1160-austria"},
+    {"name": "Masjid IBRAHIM", "address": "", "url": "https://mawaqit.net/de/masjid-ibrahim-wien-1150-austria"},
+    {"name": "Haci Bayram Moschee", "address": "", "url": "https://mawaqit.net/de/hbm-wien-1030-austria"}
+  ]
+}
