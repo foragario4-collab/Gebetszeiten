@@ -247,7 +247,7 @@ fun BoxScope.MosqueBottomSheet(
                 Box(Modifier.weight(1f)) {
                     Segmented(listOf(t("sort_near"), t("sort_iq")), sortMode) { Prefs.sortMode = it }
                 }
-                Segmented(listOf("🚗", "🚶"), mode) { Prefs.travelMode = it }
+                ModeSegmented(mode) { Prefs.travelMode = it }
             }
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f),
@@ -258,7 +258,7 @@ fun BoxScope.MosqueBottomSheet(
                     val nx = if (hasTimes(m)) nextFor(m, evs, now) else null
                     val niq = nextIqamah(m, evs, now)
                     val travel = travelMin(d, mode)
-                    val chip = arrivalChip(niq?.third, now, travel)
+                    val arr = now + travel * 60_000L
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -281,20 +281,20 @@ fun BoxScope.MosqueBottomSheet(
                         Column(Modifier.weight(1f)) {
                             Txt(m.name, 15, FontWeight.SemiBold, maxLines = 1)
                             if (niq != null) {
-                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)} · ${t("arrival", Fmt.time(arr))}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else if (nx != null) {
-                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"} · ${t("arrival", Fmt.time(arr))}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else {
                                 Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
                             }
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Txt((if (mode == 0) "🚗 " else "🚶 ") + t("travel_min", travel), 14, FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TravelIcon(mode, p.text, p.bg, 16.dp)
+                                Txt(t("travel_min", travel), 14, FontWeight.Bold)
+                            }
                             Txt(Mosques.fmtDist(d), 12, color = p.sub)
                         }
-                    }
-                    if (hasTimes(m)) {
-                        Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) { ArrivalChip(chip.first, chip.second) }
                     }
                     }
                 }
@@ -351,8 +351,14 @@ private fun MosqueDetail(
         if (hasTimes(m)) {
             val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
             val tr = travelMin(dist, Prefs.travelMode)
-            val ch = arrivalChip(nextIqamah(m, evs, now)?.third, now, tr)
-            ArrivalChip((if (Prefs.travelMode == 0) "🚗 " else "🚶 ") + t("travel_min", tr) + " · " + ch.first, ch.second)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.bg).padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TravelIcon(Prefs.travelMode, p.text, p.bg, 18.dp)
+                Txt(t("travel_min", tr) + " · " + t("arrival", Fmt.time(now + tr * 60_000L)), 14, FontWeight.SemiBold)
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
                 Txt(t("prayer"), 12, FontWeight.SemiBold, p.sub, Modifier.weight(1f))
                 Txt(t("adhan"), 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
@@ -476,6 +482,25 @@ private fun Chevron(expanded: Boolean) {
                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                 )
             )
+        }
+    }
+}
+
+
+/** Umschalter Auto / zu Fuß mit gefüllten Symbolen. */
+@Composable
+private fun ModeSegmented(selected: Int, onSelect: (Int) -> Unit) {
+    val p = LocalPal.current
+    Row(Modifier.clip(RoundedCornerShape(9.dp)).background(p.fill).padding(2.dp)) {
+        for (i in 0..1) {
+            Box(
+                Modifier
+                    .size(48.dp, 32.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(if (i == selected) p.seg else Color.Transparent)
+                    .tap { onSelect(i) },
+                contentAlignment = Alignment.Center
+            ) { TravelIcon(i, p.text, if (i == selected) p.seg else p.fill, 20.dp) }
         }
     }
 }

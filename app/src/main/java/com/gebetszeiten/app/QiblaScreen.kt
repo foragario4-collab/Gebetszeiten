@@ -110,94 +110,109 @@ fun QiblaScreen(v: Int) {
     val letters = Qibla.letters()
     val textPx = with(density) { 15.dp.toPx() }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 16.dp)) {
+    val bgColor = if (p.dark) Color.Black else p.bg
+    Column(
+        Modifier.fillMaxSize().background(bgColor).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
             Txt(t("tab_qibla"), 34, FontWeight.Bold, modifier = Modifier.weight(1f))
             Txt(t("mecca_km", "%,d".format(dist.roundToInt()).replace(',', ' ')), 13, color = p.sub)
         }
-        Spacer(Modifier.height(14.dp))
-        Column(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .background(p.card)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            val ring = p.line
-            val sub = p.sub
-            val text = p.text
-            Canvas(Modifier.fillMaxWidth(0.88f).aspectRatio(1f)) {
+        val fg = p.text
+        val sub = p.sub
+        val numPx = with(density) { 12.dp.toPx() }
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxWidth(0.92f).aspectRatio(1f)) {
                 val r = size.minDimension / 2f
                 val c = center
-                // fester Zeiger oben = Blickrichtung
-                val tri = Path().apply {
-                    moveTo(c.x, 0f)
-                    lineTo(c.x - r * 0.06f, r * 0.11f)
-                    lineTo(c.x + r * 0.06f, r * 0.11f)
-                    close()
+                val ringR = r * 0.88f
+                // feste Blickrichtung oben
+                drawLine(fg, Offset(c.x, c.y - r), Offset(c.x, c.y - r * 0.8f), strokeWidth = r * 0.022f, cap = StrokeCap.Round)
+                // Bogen von Blickrichtung zur Qibla
+                if (hasSensor && !aligned) {
+                    val arcR = r * 0.93f
+                    drawArc(
+                        needle, startAngle = -90f, sweepAngle = diff.toFloat(), useCenter = false,
+                        topLeft = Offset(c.x - arcR, c.y - arcR), size = Size(arcR * 2, arcR * 2),
+                        style = Stroke(width = r * 0.03f, cap = StrokeCap.Round)
+                    )
                 }
-                drawPath(tri, needle)
-                drawCircle(ring, r * 0.86f, c, style = Stroke(r * 0.025f))
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     textAlign = Paint.Align.CENTER
-                    textSize = textPx
+                    textSize = numPx
+                    color = sub.toArgb()
+                }
+                val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textAlign = Paint.Align.CENTER
+                    textSize = textPx * 1.45f
                     isFakeBoldText = true
                 }
                 rotate(-az, c) {
-                    for (i in 0 until 72) {
-                        val a = Math.toRadians(i * 5.0)
-                        val major = i % 18 == 0
-                        val mid = i % 6 == 0
-                        val ro = r * 0.83f
-                        val len = if (major) r * 0.1f else if (mid) r * 0.065f else r * 0.035f
+                    for (i in 0 until 180) {
+                        val deg = i * 2
+                        val a = Math.toRadians(deg.toDouble())
+                        val major = deg % 30 == 0
+                        val mid = deg % 10 == 0
+                        val len = if (major) r * 0.1f else if (mid) r * 0.075f else r * 0.045f
                         drawLine(
-                            if (i == 0) Color(0xFFFF3B30) else if (major || mid) text else sub,
-                            Offset(c.x + ((ro - len) * sin(a)).toFloat(), c.y - ((ro - len) * cos(a)).toFloat()),
-                            Offset(c.x + (ro * sin(a)).toFloat(), c.y - (ro * cos(a)).toFloat()),
-                            strokeWidth = if (major) r * 0.02f else r * 0.01f, cap = StrokeCap.Round
+                            if (deg == 0) Color(0xFFFF3B30) else if (major || mid) fg else sub.copy(alpha = 0.7f),
+                            Offset(c.x + ((ringR - len) * sin(a)).toFloat(), c.y - ((ringR - len) * cos(a)).toFloat()),
+                            Offset(c.x + (ringR * sin(a)).toFloat(), c.y - (ringR * cos(a)).toFloat()),
+                            strokeWidth = if (major) r * 0.014f else if (mid) r * 0.009f else r * 0.006f
                         )
                     }
-                    for (k in 0 until 4) {
-                        val a = Math.toRadians(k * 90.0)
-                        val rr = r * 0.62f
-                        paint.color = if (k == 0) 0xFFFF3B30.toInt() else sub.toArgb()
-                        drawIntoCanvas {
-                            it.nativeCanvas.drawText(
-                                letters[k],
-                                c.x + (rr * sin(a)).toFloat(),
-                                c.y - (rr * cos(a)).toFloat() + textPx * 0.35f,
-                                paint
-                            )
-                        }
-                    }
+                    // Qibla-Markierung: Strich + Punkt (ohne Kaaba)
                     rotate(bearing.toFloat(), c) {
-                        drawLine(needle, c, Offset(c.x, c.y - r * 0.56f), strokeWidth = r * 0.045f, cap = StrokeCap.Round)
-                        val ks = r * 0.2f
-                        val top = c.y - r * 0.8f
-                        drawRoundRect(Color(0xFF1C1C1E), Offset(c.x - ks / 2, top), Size(ks, ks), CornerRadius(ks * 0.16f))
-                        drawRect(Color(0xFFD4AF37), Offset(c.x - ks / 2, top + ks * 0.27f), Size(ks, ks * 0.13f))
+                        drawLine(needle, Offset(c.x, c.y - r * 0.36f), Offset(c.x, c.y - ringR), strokeWidth = r * 0.016f, cap = StrokeCap.Round)
+                        drawCircle(needle, r * 0.035f, Offset(c.x, c.y - r * 0.97f))
                     }
                 }
-                drawCircle(text, r * 0.045f, c)
+                // Zahlen und Himmelsrichtungen aufrecht, aber mitgedreht positioniert
+                for (k in 0 until 12) {
+                    val deg = k * 30 - az
+                    val a = Math.toRadians(deg.toDouble())
+                    val rr = r * 0.68f
+                    drawIntoCanvas {
+                        it.nativeCanvas.drawText(
+                            (k * 30).toString(),
+                            c.x + (rr * sin(a)).toFloat(), c.y - (rr * cos(a)).toFloat() + numPx * 0.35f, numPaint
+                        )
+                    }
+                }
+                for (k in 0 until 4) {
+                    val deg = k * 90 - az
+                    val a = Math.toRadians(deg.toDouble())
+                    val rr = r * 0.5f
+                    cardPaint.color = if (k == 0) 0xFFFF3B30.toInt() else fg.toArgb()
+                    drawIntoCanvas {
+                        it.nativeCanvas.drawText(
+                            letters[k],
+                            c.x + (rr * sin(a)).toFloat(), c.y - (rr * cos(a)).toFloat() + cardPaint.textSize * 0.36f, cardPaint
+                        )
+                    }
+                }
+                // Fadenkreuz
+                drawLine(sub, Offset(c.x - r * 0.12f, c.y), Offset(c.x + r * 0.12f, c.y), strokeWidth = r * 0.008f)
+                drawLine(sub, Offset(c.x, c.y - r * 0.12f), Offset(c.x, c.y + r * 0.12f), strokeWidth = r * 0.008f)
             }
-            Spacer(Modifier.height(18.dp))
-            Txt("${bearing.roundToInt()}° ${Qibla.direction(bearing)}", 30, FontWeight.Bold, align = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            val st = when {
-                !hasSensor -> t("no_sensor")
-                aligned -> t("aligned") + " ✓"
-                diff > 0 -> t("turn_right", abs(diff).roundToInt())
-                else -> t("turn_left", abs(diff).roundToInt())
-            }
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(if (aligned) Color(0x2634C759) else p.bg)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) { Txt(st, 15, FontWeight.SemiBold, if (aligned) Color(0xFF248A3D) else p.text) }
         }
+        Txt(if (hasSensor) "${az.roundToInt() % 360}°" else "–", 64, FontWeight.Light, align = TextAlign.Center)
+        Txt(Qibla.direction(az.toDouble()), 17, FontWeight.Medium, p.sub, align = TextAlign.Center)
+        Spacer(Modifier.height(14.dp))
+        val st = when {
+            !hasSensor -> t("no_sensor")
+            aligned -> t("aligned")
+            diff > 0 -> t("turn_right", abs(diff).roundToInt())
+            else -> t("turn_left", abs(diff).roundToInt())
+        }
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (aligned) Color(0x2E34C759) else p.card)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) { Txt(st, 15, FontWeight.SemiBold, if (aligned) Color(0xFF34C759) else p.text) }
+        Spacer(Modifier.height(4.dp))
+        Txt("${t("tab_qibla")} ${bearing.roundToInt()}° · ${Qibla.direction(bearing)}", 13, color = p.sub, align = TextAlign.Center)
     }
 }
