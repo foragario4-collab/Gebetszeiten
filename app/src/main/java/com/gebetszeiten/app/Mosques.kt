@@ -49,6 +49,16 @@ object Mosques {
         private set
 
     private fun osmFile(ctx: Context) = File(ctx.filesDir, "moscheen.json")
+    private fun mwFile(ctx: Context) = File(ctx.filesDir, "mawaqit.json")
+
+    @Volatile
+    private var mawaqit: List<Mosque>? = null
+    private var mwAt = 0L
+    private var mwLat = 0.0
+    private var mwLng = 0.0
+    @Volatile
+    var mwLoading = false
+        private set
     private fun ownFile(ctx: Context) = File(ctx.filesDir, "eigene_moscheen.json")
 
     // ---------------- Laden / Speichern ----------------
@@ -138,16 +148,194 @@ object Mosques {
         ownFile(ctx).writeText(JSONObject().put("items", arr).put("overrides", ovo).toString())
     }
 
-    /** Alle Moscheen: eigene + OpenStreetMap (OSM-Einträge direkt neben einer eigenen werden ausgeblendet). */
+    /**
+     * Alle Moscheen: eigene + Mawaqit + OpenStreetMap.
+     * Doppelte (näher als 80 m an einem besseren Eintrag) werden ausgeblendet.
+     */
     fun list(ctx: Context): List<Mosque> {
         if (osm == null) loadOsm(ctx)
         if (own == null) loadOwn(ctx)
+        if (mawaqit == null) loadMw(ctx)
         val mine = own ?: emptyList<Mosque>()
         val ov = overrides ?: emptyMap<String, Map<String, String>>()
+        val mw = (mawaqit ?: emptyList()).filter { m ->
+            mine.none { distance(it.lat, it.lng, m.lat, m.lng) < 80f || (it.url != null && it.url == m.url) }
+        }.map { m -> ov[m.id]?.let { m.copy(iqamah = it) } ?: m }
+        val better = mine + mw
         val fromOsm = (osm ?: emptyList()).filter { o ->
-            mine.none { distance(it.lat, it.lng, o.lat, o.lng) < 80f }
+            better.none { distance(it.lat, it.lng, o.lat, o.lng) < 80f }
         }.map { o -> ov[o.id]?.let { o.copy(iqamah = it) } ?: o }
-        return mine + fromOsm
+        return better + fromOsm
+    }
+
+    // ---------------- Mawaqit (öffentliche Suche, liefert die heutigen Zeiten mit) ----------------
+
+    private fun loadMw(ctx: Context) {
+        try {
+            val f = mwFile(ctx)
+            if (!f.exists()) {
+                mawaqit = emptyList()
+                return
+            }
+            val o = JSONObject(f.readText())
+            mwAt = o.getLong("at")
+            mwLat = o.getDouble("lat")
+            mwLng = o.getDouble("lng")
+            val arr = o.getJSONArray("items")
+            mawaqit = (0 until arr.length()).map {
+                val m = arr.getJSONObject(it)
+                Mosque(
+                    id = m.getString("id"), name = m.getString("name"),
+                    lat = m.getDouble("lat"), lng = m.getDouble("lng"), address = m.optString("addr"),
+                    source = "Mawaqit", url = m.optString("url").ifBlank { null },
+                    adhan = jsonToMap(m.optJSONObject("adhan")), iqamah = jsonToMap(m.optJSONObject("iqamah")),
+                    fetchedAt = mwAt
+                )
+            }
+        } catch (e: Exception) {
+            mawaqit = emptyList()
+        }
+    }
+
+    /** Neu laden, wenn älter als 12 Stunden (Zeiten ändern sich täglich) oder weit weg. */
+    fun mawaqitNeedsRefresh(ctx: Context, lat: Double, lng: Double): Boolean {
+        list(ctx)
+        if (System.currentTimeMillis() - mwAt > 12 * 3600_000L) return true
+        return distance(lat, lng, mwLat, mwLng) > 10_000f
+    }
+
+    fun refreshMawaqit(ctx: Context, lat: Double, lng: Double, cb: (Boolean) -> Unit) {
+        if (mwLoading) return
+        mwLoading = true
+        val app = ctx.applicationContext
+        val main = Handler(Looper.getMainLooper())
+        Thread {
+            val ok = try {
+                val items = fetchMawaqit(lat, lng)
+                val arr = JSONArray()
+                items.forEach {
+                    arr.put(
+                        JSONObject().put("id", it.id).put("name", it.name).put("lat", it.lat).put("lng", it.lng)
+                            .put("addr", it.address).put("url", it.url ?: "")
+                            .put("adhan", mapToJson(it.adhan)).put("iqamah", mapToJson(it.iqamah))
+                    )
+                }
+                mwFile(app).writeText(
+                    JSONObject().put("at", System.currentTimeMillis()).put("lat", lat).put("lng", lng).put("items", arr).toString()
+                )
+                mwAt = System.currentTimeMillis()
+                mwLat = lat
+                mwLng = lng
+                mawaqit = items
+                true
+            } catch (e: Exception) {
+                false
+            }
+            mwLoading = false
+            main.post { cb(ok) }
+        }.start()
+    }
+
+    private val TIME = Regex("\\d{1,2}:\\d{2}")
+
+    /** Ein Mawaqit-Suchergebnis in eine Moschee umwandeln. */
+    private fun parseMw(o: JSONObject): Mosque? {
+        val la = o.optDouble("latitude", Double.NaN)
+        val lo = o.optDouble("longitude", Double.NaN)
+        if (la.isNaN() || lo.isNaN()) return null
+        val name = o.optString("name").ifBlank { o.optString("label") }.ifBlank { "Moschee" }
+        val slug = o.optString("slug")
+        val uuid = o.optString("uuid").ifBlank { slug }.ifBlank { "%.5f,%.5f".format(Locale.US, la, lo) }
+        val keys = listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA")
+        val adhan = LinkedHashMap<String, String>()
+        o.optJSONArray("times")?.let { t ->
+            var list = (0 until t.length()).map { t.optString(it) }.filter { it.matches(TIME) }
+            if (list.size == 6) list = list.filterIndexed { idx, _ -> idx != 1 }
+            list.take(5).forEachIndexed { idx, v -> adhan[keys[idx]] = v }
+        }
+        val iq = LinkedHashMap<String, String>()
+        val iqArr = o.optJSONArray("iqama") ?: o.optJSONArray("iqamaCalendar")
+        if (iqArr != null) {
+            for (idx in 0 until minOf(5, iqArr.length())) {
+                val raw = iqArr.optString(idx).trim()
+                val a = adhan[keys[idx]]
+                if (raw.matches(TIME)) {
+                    iq[keys[idx]] = raw
+                } else if (a != null && raw.trimStart('+').toIntOrNull() != null) {
+                    iq[keys[idx]] = addMin(a, raw.trimStart('+').toInt())
+                }
+            }
+        }
+        o.optJSONArray("fixedIqama")?.let { fx ->
+            for (idx in 0 until minOf(5, fx.length())) {
+                val raw = fx.optString(idx).trim()
+                if (raw.matches(TIME)) iq[keys[idx]] = raw
+            }
+        }
+        val jumua = o.optString("jumua").ifBlank { o.optString("jumua1") }
+        if (jumua.matches(TIME)) adhan["JUMUAH"] = jumua
+        val addr = listOf(o.optString("localisation"), o.optString("address"), o.optString("city"))
+            .firstOrNull { it.isNotBlank() } ?: ""
+        return Mosque(
+            id = "mw-$uuid", name = name, lat = la, lng = lo, address = addr,
+            source = "Mawaqit", url = if (slug.isNotBlank()) "https://mawaqit.net/de/$slug" else null,
+            adhan = adhan, iqamah = iq, fetchedAt = System.currentTimeMillis()
+        )
+    }
+
+    /** Mawaqit-Suche mit beliebigen Parametern (word=… oder lat=…&lon=…). */
+    private fun mawaqitQuery(params: String): List<Mosque> {
+        val body = httpGet("https://mawaqit.net/api/2.0/mosque/search?$params").trim()
+        val arr: JSONArray = when {
+            body.startsWith("[") -> JSONArray(body)
+            body.startsWith("{") -> JSONObject(body).let { o ->
+                o.optJSONArray("data") ?: o.optJSONArray("mosques") ?: o.optJSONArray("results") ?: JSONArray()
+            }
+            else -> JSONArray()
+        }
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let { parseMw(it) } }
+    }
+
+    private fun fetchMawaqit(lat: Double, lng: Double): List<Mosque> {
+        val out = LinkedHashMap<String, Mosque>()
+        for (page in 1..3) {
+            val list = mawaqitQuery(
+                "lat=" + "%.5f".format(Locale.US, lat) + "&lon=" + "%.5f".format(Locale.US, lng) + "&page=" + page
+            )
+            if (list.isEmpty()) break
+            val near = list.filter { distance(lat, lng, it.lat, it.lng) <= 25_000f }
+            near.forEach { out[it.id] = it }
+            if (near.isEmpty()) break
+        }
+        return out.values.toList()
+    }
+
+    /**
+     * Zeiten für eine Moschee ohne Zeiten im Hintergrund suchen:
+     * 1. Mawaqit nach Name, 2. Mawaqit nach Position, 3. MasjidBox/Mawaqit-Links aus dem Namen.
+     */
+    fun findTimes(m: Mosque): Draft? {
+        val cands = ArrayList<Mosque>()
+        try {
+            cands += mawaqitQuery("word=" + URLEncoder.encode(m.name, "UTF-8"))
+        } catch (e: Exception) {
+        }
+        try {
+            cands += mawaqitQuery("lat=" + "%.5f".format(Locale.US, m.lat) + "&lon=" + "%.5f".format(Locale.US, m.lng))
+        } catch (e: Exception) {
+        }
+        val best = cands
+            .filter { it.adhan.isNotEmpty() || it.iqamah.isNotEmpty() }
+            .map { it to distance(m.lat, m.lng, it.lat, it.lng) }
+            .filter { it.second < 400f }
+            .minByOrNull { it.second }?.first
+        if (best != null) {
+            return Draft(best.name, best.address, best.lat, best.lng, "Mawaqit", best.url ?: "https://mawaqit.net", best.adhan, best.iqamah)
+        }
+        if (m.name.isNotBlank() && !m.name.equals("Moschee", true) && !m.name.equals("Gebetsraum", true)) {
+            return searchByName(m.name)
+        }
+        return null
     }
 
     fun find(ctx: Context, id: String): Mosque? = list(ctx).firstOrNull { it.id == id }
@@ -260,16 +448,7 @@ object Mosques {
             "nwr[\"building\"=\"mosque\"]$a;" +
             "nwr[\"name\"~\"Moschee|Mosque|Masjid|Mesjid|Mescid|Camii|Cami|Džamija|Dzamija|Musalla|Mussala|Gebetsraum|Islamisch|Islamic|Islamski\",i]$a;" +
             ");out center tags;"
-        val conn = URL("https://overpass-api.de/api/interpreter").openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.doOutput = true
-        conn.connectTimeout = 20_000
-        conn.readTimeout = 60_000
-        conn.setRequestProperty("User-Agent", UA)
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-        conn.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
-        val body = conn.inputStream.bufferedReader().use { it.readText() }
-        conn.disconnect()
+        val body = overpass(q)
         val els = JSONObject(body).getJSONArray("elements")
         val out = ArrayList<Mosque>()
         for (i in 0 until els.length()) {
@@ -322,6 +501,52 @@ object Mosques {
     /** Wird alle Moscheen-Daten als geladen anzeigen (für Diagnose). */
     fun countOsm(): Int = osm?.size ?: 0
     fun countOwn(): Int = own?.size ?: 0
+    fun countMawaqit(): Int = mawaqit?.size ?: 0
+
+    /** Fehlerart des letzten Ladeversuchs: "offline" oder "busy". */
+    @Volatile
+    var lastError: String? = null
+
+    private val overpassServers = listOf(
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    )
+
+    /** Fragt nacheinander mehrere Overpass-Server, bis einer antwortet. */
+    private fun overpass(q: String): String {
+        var last: Exception? = null
+        var anyReached = false
+        for (server in overpassServers) {
+            try {
+                val conn = URL(server).openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.connectTimeout = 12_000
+                conn.readTimeout = 45_000
+                conn.setRequestProperty("User-Agent", UA)
+                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                conn.outputStream.use { it.write(("data=" + URLEncoder.encode(q, "UTF-8")).toByteArray()) }
+                val code = conn.responseCode
+                anyReached = true
+                if (code == 200) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    conn.disconnect()
+                    if (body.trimStart().startsWith("{")) {
+                        lastError = null
+                        return body
+                    }
+                } else {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        lastError = if (anyReached) "busy" else "offline"
+        throw last ?: Exception("Overpass nicht erreichbar")
+    }
 
     // ---------------- Adresse → Position (OpenStreetMap Nominatim) ----------------
 

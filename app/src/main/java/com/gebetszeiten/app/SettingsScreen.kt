@@ -359,12 +359,15 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             DiagRow(t("d_live"), promoted, promotedOk)
             DiagRow(t("d_internet"), if (net) t("online") else t("offline"), net)
             DiagRow(t("d_osm"), "${Mosques.countOsm()}", Mosques.countOsm() > 0)
+            DiagRow("Mawaqit", "${Mosques.countMawaqit()}", Mosques.countMawaqit() > 0)
             DiagRow(t("d_own"), "${Mosques.countOwn()}", true)
             DiagRow(t("d_next"), nextAlarm?.let { "${Fmt.time(it.at)} · ${it.ev?.title ?: t("sec_widget")}" } ?: t("none"), nextAlarm != null)
             ButtonRow(t("reload_mosques")) {
                 Mosques.refresh(ctx, Prefs.lat, Prefs.lng) { okLoad ->
-                    locStatus = if (okLoad) t("reloaded", Mosques.countOsm()) else t("load_failed")
+                    locStatus = if (okLoad) t("reloaded", Mosques.countOsm())
+                    else if (Mosques.lastError == "offline") t("err_offline") else t("err_busy")
                 }
+                Mosques.refreshMawaqit(ctx, Prefs.lat, Prefs.lng) { }
             }
         }
 

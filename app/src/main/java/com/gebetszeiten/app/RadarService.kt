@@ -105,6 +105,9 @@ class RadarService : Service(), LocationListener {
         if (Mosques.needsRefresh(this, loc.latitude, loc.longitude) && !Mosques.loading) {
             Mosques.refresh(this, loc.latitude, loc.longitude) { lastLoc?.let { update(it) } }
         }
+        if (Mosques.mawaqitNeedsRefresh(this, loc.latitude, loc.longitude) && !Mosques.mwLoading) {
+            Mosques.refreshMawaqit(this, loc.latitude, loc.longitude) { lastLoc?.let { update(it) } }
+        }
         update(loc)
     }
 

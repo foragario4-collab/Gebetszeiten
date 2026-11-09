@@ -219,8 +219,19 @@ fun MapScreen(v: Int) {
         if (force || Mosques.needsRefresh(ctx, myLat, myLng)) {
             status = t("loading_mosques")
             Mosques.refresh(ctx, myLat, myLng) { ok ->
-                status = if (ok) null else t("load_failed")
+                status = when {
+                    ok -> null
+                    Mosques.lastError == "offline" -> t("err_offline")
+                    else -> t("err_busy")
+                }
                 mosques = Mosques.list(ctx)
+            }
+        }
+        // Mawaqit: Moscheen mit tagesaktuellen Zeiten (Adhan, Iqamah, Jumuah)
+        if (force || Mosques.mawaqitNeedsRefresh(ctx, myLat, myLng)) {
+            Mosques.refreshMawaqit(ctx, myLat, myLng) {
+                mosques = Mosques.list(ctx)
+                selected = selected?.let { s -> mosques.firstOrNull { it.id == s.id } } ?: selected
             }
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -319,6 +320,29 @@ private fun MosqueDetail(
     var info by remember(m.id) { mutableStateOf<String?>(null) }
     val main = remember { Handler(Looper.getMainLooper()) }
 
+    var finding by remember(m.id) { mutableStateOf(false) }
+
+    fun findTimes() {
+        if (finding) return
+        finding = true
+        info = null
+        Thread {
+            val d = try {
+                Mosques.findTimes(m)
+            } catch (e: Exception) {
+                null
+            }
+            main.post {
+                finding = false
+                if (d != null && (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty())) {
+                    onUpdated(Mosques.attachLink(ctx, m, d))
+                } else {
+                    info = t("not_found_times")
+                }
+            }
+        }.start()
+    }
+
     fun loadLink() {
         if (link.isBlank() || busy) return
         busy = true
@@ -404,7 +428,35 @@ private fun MosqueDetail(
                     13, color = p.sub, align = TextAlign.Center
                 )
             }
-            Txt(t("link_label"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(p.accent)
+                    .tap { findTimes() },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!finding) {
+                    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+                        val w = size.width
+                        drawCircle(
+                            Color.White, w * 0.32f, androidx.compose.ui.geometry.Offset(w * 0.44f, w * 0.44f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.12f)
+                        )
+                        drawLine(
+                            Color.White, androidx.compose.ui.geometry.Offset(w * 0.68f, w * 0.68f),
+                            androidx.compose.ui.geometry.Offset(w * 0.9f, w * 0.9f),
+                            strokeWidth = w * 0.13f, cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Txt(if (finding) t("finding") else t("find_times"), 15, FontWeight.SemiBold, Color.White, maxLines = 1)
+            }
+            Txt(t("find_times_sub"), 12, color = p.sub, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Txt(t("or") + " · " + t("link_label"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg)
                     .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
