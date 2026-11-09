@@ -154,6 +154,11 @@ object Prefs {
         get() = sp.getInt("sortMode", 0)
         set(v) = edit { putInt("sortMode", v) }
 
+    /** 0 = runder Kompass, 1 = eckige Leiste mit Karte */
+    var compassStyle: Int
+        get() = sp.getInt("compassStyle", 0)
+        set(v) = edit { putInt("compassStyle", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

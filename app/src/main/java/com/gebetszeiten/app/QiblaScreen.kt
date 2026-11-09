@@ -7,6 +7,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -20,19 +21,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -51,28 +54,33 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Qibla-Tab: großer runder Kompass im Apple-Stil. */
+private val GREEN = Color(0xFF34C759)
+private val ORANGE = Color(0xFFFF9F0A)
+
+/** Qibla-Tab: runder Kompass im Apple-Stil oder eckige Leiste mit Karte. */
 @Composable
 fun QiblaScreen(v: Int) {
     val p = LocalPal.current
     val ctx = LocalContext.current
     val view = LocalView.current
-    val density = LocalDensity.current
     val lat = Prefs.lat
     val lng = Prefs.lng
     val bearing = Qibla.bearing(lat, lng)
     val dist = Qibla.distanceKm(lat, lng)
     var az by remember { mutableFloatStateOf(0f) }
     var hasSensor by remember { mutableStateOf(true) }
+    var accuracy by remember { mutableIntStateOf(SensorManager.SENSOR_STATUS_ACCURACY_HIGH) }
 
     DisposableEffect(lat, lng) {
         val sm = ctx.getSystemService(SensorManager::class.java)
-        val sensor = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        if (sm == null || sensor == null) {
+        val rot = sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val mag = sm?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        if (sm == null || rot == null) {
             hasSensor = false
             onDispose { }
         } else {
@@ -83,6 +91,10 @@ fun QiblaScreen(v: Int) {
             var sy = 0.0
             val l = object : SensorEventListener {
                 override fun onSensorChanged(e: SensorEvent) {
+                    if (e.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+                        accuracy = e.accuracy
+                        return
+                    }
                     SensorManager.getRotationMatrixFromVector(rm, e.values)
                     SensorManager.getOrientation(rm, o)
                     val a = Math.toRadians(Math.toDegrees(o[0].toDouble()) + decl)
@@ -91,51 +103,109 @@ fun QiblaScreen(v: Int) {
                     az = ((Math.toDegrees(atan2(sy, sx)) + 360.0) % 360.0).toFloat()
                 }
 
-                override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+                override fun onAccuracyChanged(s: Sensor?, acc: Int) {
+                    if (s?.type == Sensor.TYPE_MAGNETIC_FIELD) accuracy = acc
+                }
             }
-            sm.registerListener(l, sensor, SensorManager.SENSOR_DELAY_UI)
+            sm.registerListener(l, rot, SensorManager.SENSOR_DELAY_UI)
+            if (mag != null) sm.registerListener(l, mag, SensorManager.SENSOR_DELAY_NORMAL)
             onDispose { sm.unregisterListener(l) }
         }
     }
 
     val diff = ((bearing - az + 540.0) % 360.0) - 180.0
     val aligned = hasSensor && abs(diff) < 4.0
-    // Kurzes Antippen-Gefühl, sobald man ausgerichtet ist
     LaunchedEffect(aligned) {
         if (aligned) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
     }
-    val needle by animateColorAsState(
-        if (!hasSensor) p.sub else if (aligned) Color(0xFF34C759) else Color(0xFFFF9500), label = "needle"
-    )
-    val letters = Qibla.letters()
-    val textPx = with(density) { 15.dp.toPx() }
-
+    val lowAcc = hasSensor && accuracy <= SensorManager.SENSOR_STATUS_ACCURACY_LOW
+    val style = Prefs.compassStyle
     val bgColor = if (p.dark) Color.Black else p.bg
-    Column(
-        Modifier.fillMaxSize().background(bgColor).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
-            Txt(t("tab_qibla"), 34, FontWeight.Bold, modifier = Modifier.weight(1f))
-            Txt(t("mecca_km", "%,d".format(dist.roundToInt()).replace(',', ' ')), 13, color = p.sub)
+
+    Column(Modifier.fillMaxSize().background(bgColor).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Txt(t("tab_qibla"), 34, FontWeight.Bold)
+                Txt(t("mecca_km", "%,d".format(dist.roundToInt()).replace(',', ' ')), 13, color = p.sub)
+            }
+            Segmented(listOf(t("style_round"), t("style_square")), style) { Prefs.compassStyle = it }
         }
-        val fg = p.text
-        val sub = p.sub
-        val numPx = with(density) { 12.dp.toPx() }
+
+        AnimatedVisibility(visible = lowAcc) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(ORANGE.copy(alpha = 0.16f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Canvas(Modifier.size(40.dp, 28.dp)) {
+                    val w = size.width
+                    val h = size.height
+                    val path = Path().apply {
+                        moveTo(w * 0.5f, h * 0.5f)
+                        cubicTo(w * 0.35f, h * 0.1f, w * 0.08f, h * 0.1f, w * 0.08f, h * 0.5f)
+                        cubicTo(w * 0.08f, h * 0.9f, w * 0.35f, h * 0.9f, w * 0.5f, h * 0.5f)
+                        cubicTo(w * 0.65f, h * 0.1f, w * 0.92f, h * 0.1f, w * 0.92f, h * 0.5f)
+                        cubicTo(w * 0.92f, h * 0.9f, w * 0.65f, h * 0.9f, w * 0.5f, h * 0.5f)
+                    }
+                    drawPath(path, ORANGE, style = Stroke(width = h * 0.1f, cap = StrokeCap.Round))
+                }
+                Column(Modifier.weight(1f)) {
+                    Txt(t("calib_title"), 14, FontWeight.Bold, ORANGE)
+                    Txt(t("calib_text"), 13, color = p.text)
+                }
+            }
+        }
+
+        if (style == 0) {
+            RoundCompass(az, bearing, diff, aligned, hasSensor, Modifier.weight(1f))
+        } else {
+            Spacer(Modifier.height(12.dp))
+            BarCompass(az, bearing, diff, aligned, hasSensor)
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(22.dp))) {
+                MapScreen(v)
+            }
+        }
+    }
+}
+
+private fun statusText(hasSensor: Boolean, aligned: Boolean, diff: Double): String = when {
+    !hasSensor -> t("no_sensor")
+    aligned -> t("aligned")
+    diff > 0 -> t("turn_right", abs(diff).roundToInt())
+    else -> t("turn_left", abs(diff).roundToInt())
+}
+
+@Composable
+private fun RoundCompass(az: Float, bearing: Double, diff: Double, aligned: Boolean, hasSensor: Boolean, modifier: Modifier) {
+    val p = LocalPal.current
+    val density = LocalDensity.current
+    val fg = p.text
+    val sub = p.sub
+    val letters = Qibla.letters()
+    val numPx = with(density) { 12.dp.toPx() }
+    val cardPx = with(density) { 22.dp.toPx() }
+    val qColor by animateColorAsState(if (!hasSensor) sub else if (aligned) GREEN else ORANGE, label = "q")
+    val topColor by animateColorAsState(if (aligned) GREEN else fg, label = "top")
+
+    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxWidth(0.92f).aspectRatio(1f)) {
                 val r = size.minDimension / 2f
                 val c = center
                 val ringR = r * 0.88f
-                // feste Blickrichtung oben
-                drawLine(fg, Offset(c.x, c.y - r), Offset(c.x, c.y - r * 0.8f), strokeWidth = r * 0.022f, cap = StrokeCap.Round)
-                // Bogen von Blickrichtung zur Qibla
+                // Bogen von Blickrichtung bis Qibla
                 if (hasSensor && !aligned) {
                     val arcR = r * 0.93f
                     drawArc(
-                        needle, startAngle = -90f, sweepAngle = diff.toFloat(), useCenter = false,
+                        ORANGE.copy(alpha = 0.85f), startAngle = -90f, sweepAngle = diff.toFloat(), useCenter = false,
                         topLeft = Offset(c.x - arcR, c.y - arcR), size = Size(arcR * 2, arcR * 2),
-                        style = Stroke(width = r * 0.03f, cap = StrokeCap.Round)
+                        style = Stroke(width = r * 0.028f, cap = StrokeCap.Round)
                     )
                 }
                 val numPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -145,7 +215,7 @@ fun QiblaScreen(v: Int) {
                 }
                 val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     textAlign = Paint.Align.CENTER
-                    textSize = textPx * 1.45f
+                    textSize = cardPx
                     isFakeBoldText = true
                 }
                 rotate(-az, c) {
@@ -162,16 +232,15 @@ fun QiblaScreen(v: Int) {
                             strokeWidth = if (major) r * 0.014f else if (mid) r * 0.009f else r * 0.006f
                         )
                     }
-                    // Qibla-Markierung: Strich + Punkt (ohne Kaaba)
+                    // Qibla: ein langer Strich bis an den Rand
                     rotate(bearing.toFloat(), c) {
-                        drawLine(needle, Offset(c.x, c.y - r * 0.36f), Offset(c.x, c.y - ringR), strokeWidth = r * 0.016f, cap = StrokeCap.Round)
-                        drawCircle(needle, r * 0.035f, Offset(c.x, c.y - r * 0.97f))
+                        drawLine(qColor, Offset(c.x, c.y - r * 0.24f), Offset(c.x, c.y - ringR), strokeWidth = r * 0.024f, cap = StrokeCap.Round)
                     }
                 }
-                // Zahlen und Himmelsrichtungen aufrecht, aber mitgedreht positioniert
+                // Blickrichtung oben – trifft er den Qibla-Strich, ergibt das eine grüne Linie
+                drawLine(topColor, Offset(c.x, c.y - r), Offset(c.x, c.y - r * 0.8f), strokeWidth = r * 0.024f, cap = StrokeCap.Round)
                 for (k in 0 until 12) {
-                    val deg = k * 30 - az
-                    val a = Math.toRadians(deg.toDouble())
+                    val a = Math.toRadians((k * 30 - az).toDouble())
                     val rr = r * 0.68f
                     drawIntoCanvas {
                         it.nativeCanvas.drawText(
@@ -181,38 +250,97 @@ fun QiblaScreen(v: Int) {
                     }
                 }
                 for (k in 0 until 4) {
-                    val deg = k * 90 - az
-                    val a = Math.toRadians(deg.toDouble())
+                    val a = Math.toRadians((k * 90 - az).toDouble())
                     val rr = r * 0.5f
                     cardPaint.color = if (k == 0) 0xFFFF3B30.toInt() else fg.toArgb()
                     drawIntoCanvas {
                         it.nativeCanvas.drawText(
                             letters[k],
-                            c.x + (rr * sin(a)).toFloat(), c.y - (rr * cos(a)).toFloat() + cardPaint.textSize * 0.36f, cardPaint
+                            c.x + (rr * sin(a)).toFloat(), c.y - (rr * cos(a)).toFloat() + cardPx * 0.36f, cardPaint
                         )
                     }
                 }
-                // Fadenkreuz
                 drawLine(sub, Offset(c.x - r * 0.12f, c.y), Offset(c.x + r * 0.12f, c.y), strokeWidth = r * 0.008f)
                 drawLine(sub, Offset(c.x, c.y - r * 0.12f), Offset(c.x, c.y + r * 0.12f), strokeWidth = r * 0.008f)
             }
         }
         Txt(if (hasSensor) "${az.roundToInt() % 360}°" else "–", 64, FontWeight.Light, align = TextAlign.Center)
         Txt(Qibla.direction(az.toDouble()), 17, FontWeight.Medium, p.sub, align = TextAlign.Center)
-        Spacer(Modifier.height(14.dp))
-        val st = when {
-            !hasSensor -> t("no_sensor")
-            aligned -> t("aligned")
-            diff > 0 -> t("turn_right", abs(diff).roundToInt())
-            else -> t("turn_left", abs(diff).roundToInt())
-        }
+        Spacer(Modifier.height(12.dp))
         Box(
             Modifier
                 .clip(RoundedCornerShape(18.dp))
-                .background(if (aligned) Color(0x2E34C759) else p.card)
+                .background(if (aligned) GREEN.copy(alpha = 0.18f) else p.card)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) { Txt(st, 15, FontWeight.SemiBold, if (aligned) Color(0xFF34C759) else p.text) }
+        ) { Txt(statusText(hasSensor, aligned, diff), 15, FontWeight.SemiBold, if (aligned) GREEN else p.text) }
         Spacer(Modifier.height(4.dp))
         Txt("${t("tab_qibla")} ${bearing.roundToInt()}° · ${Qibla.direction(bearing)}", 13, color = p.sub, align = TextAlign.Center)
+    }
+}
+
+/** Eckige Leiste wie früher: Gradband läuft unter der Nadel durch. */
+@Composable
+private fun BarCompass(az: Float, bearing: Double, diff: Double, aligned: Boolean, hasSensor: Boolean) {
+    val p = LocalPal.current
+    val density = LocalDensity.current
+    val letters = Qibla.letters()
+    val qColor by animateColorAsState(if (!hasSensor) p.sub else if (aligned) GREEN else ORANGE, label = "q")
+    val topColor by animateColorAsState(if (aligned) GREEN else p.text, label = "top")
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(p.card)) {
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Txt(t("heading"), 12, FontWeight.SemiBold, p.sub)
+                Txt(if (hasSensor) "${az.roundToInt() % 360}°" else "–", 40, FontWeight.Light)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Txt(t("qibla_up"), 12, FontWeight.SemiBold, p.sub)
+                Txt("${bearing.roundToInt()}° ${Qibla.direction(bearing)}", 17, FontWeight.SemiBold)
+            }
+        }
+        val tick = p.text
+        val minor = p.line
+        val label = p.sub
+        val textPx = with(density) { 12.dp.toPx() }
+        Canvas(Modifier.fillMaxWidth().height(68.dp)) {
+            val w = size.width
+            val hgt = size.height
+            val ppd = w / 128f
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textAlign = Paint.Align.CENTER
+                textSize = textPx
+                isFakeBoldText = true
+            }
+            val base = hgt - textPx * 1.9f
+            var d = (ceil((az - 64f) / 5f) * 5f).toInt()
+            while (d <= az + 64f) {
+                val n = ((d % 360) + 360) % 360
+                val x = w / 2f + (d - az) * ppd
+                val major = n % 30 == 0
+                val len = if (major) textPx * 1.8f else textPx * 0.9f
+                drawLine(
+                    if (n == 0) Color(0xFFFF3B30) else if (major) tick else minor,
+                    Offset(x, base - len), Offset(x, base),
+                    strokeWidth = if (major) 4f else 3f, cap = StrokeCap.Round
+                )
+                if (major) {
+                    val lb = when (n) { 0 -> letters[0]; 90 -> letters[1]; 180 -> letters[2]; 270 -> letters[3]; else -> n.toString() }
+                    paint.color = if (n == 0) 0xFFFF3B30.toInt() else label.toArgb()
+                    drawIntoCanvas { it.nativeCanvas.drawText(lb, x, hgt - textPx * 0.4f, paint) }
+                }
+                d += 5
+            }
+            val rel = diff.toFloat().coerceIn(-62f, 62f)
+            drawLine(qColor, Offset(w / 2f + rel * ppd, 0f), Offset(w / 2f + rel * ppd, base + 2f), strokeWidth = 8f, cap = StrokeCap.Round)
+            drawLine(topColor, Offset(w / 2f, 0f), Offset(w / 2f, base + 2f), strokeWidth = 8f, cap = StrokeCap.Round)
+        }
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(p.line))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (aligned) GREEN else qColor))
+            Txt(statusText(hasSensor, aligned, diff), 15, FontWeight.SemiBold, if (aligned) GREEN else p.text)
+        }
     }
 }

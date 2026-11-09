@@ -285,3 +285,7 @@ far_warning	Achtung: Diese Position liegt {0} km von dir entfernt. Stimmt das ni
 car	Auto	Car	Araba	Auto	Auto	Makinë	Voiture	Авто	Машен	汽车	سيارة
 walk	Zu Fuß	Walk	Yürüyüş	Pješke	Peške	Në këmbë	À pied	Пешком	ГӀаш	步行	مشيًا
 arrival	Ankunft {0}	Arrive {0}	Varış {0}	Dolazak {0}	Dolazak {0}	Mbërritja {0}	Arrivée {0}	Прибытие {0}	Кхача {0}	{0} 到达	الوصول {0}
+style_round	Rund	Round	Yuvarlak	Okrugli	Okrugli	I rrumbullakët	Rond	Круглый	Горга	圆形	دائري
+style_square	Eckig	Bar	Köşeli	Traka	Traka	Shirit	Barre	Полоса	Сиз	条形	شريط
+calib_title	Kompass ungenau.	Compass inaccurate.	Pusula hassas değil.	Kompas nije precizan.	Kompas nije precizan.	Busulla e pasaktë.	Boussole imprécise.	Компас неточен.	Компас нийса бац.	指南针不准确。	البوصلة غير دقيقة.
+calib_text	Schwenke das Handy ein paar Mal in Form einer 8 und halte es fern von Metall und Magneten.	Move your phone in a figure-8 a few times and keep it away from metal and magnets.	Telefonu birkaç kez 8 şeklinde salla, metal ve mıknatıslardan uzak tut.	Pomjeri telefon nekoliko puta u obliku osmice i drži ga dalje od metala i magneta.	Pomeri telefon nekoliko puta u obliku osmice i drži ga dalje od metala i magneta.	Lëvize telefonin disa herë në formë 8-she dhe mbaje larg metalit e magneteve.	Bougez le téléphone en forme de 8 plusieurs fois, loin du métal et des aimants.	Покрутите телефон восьмёркой несколько раз, держите подальше от металла и магнитов.	Телефон масех 8 санна хьовзае, эчигнах а, магнитех а генахь латтае.	请将手机以“8”字形晃动几次，并远离金属和磁铁。	حرّك الهاتف على شكل الرقم 8 عدة مرات وأبعده عن المعادن والمغناطيس.
