@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.roundToInt
 
 /** Nächstes Gebet einer Moschee: (Titel, Adhan, Iqamah?) – nutzt die Zeiten der Moschee, falls vorhanden. */
@@ -67,6 +68,56 @@ internal fun nextFor(m: Mosque, evs: List<Ev>, now: Long): Triple<String, String
 }
 
 private fun hasTimes(m: Mosque) = m.adhan.isNotEmpty() || m.iqamah.isNotEmpty()
+
+/** Geschätzte Fahr-/Gehzeit in Minuten (Stadtverkehr ~28 km/h + 2 Min Parken, zu Fuß 4,8 km/h). */
+internal fun travelMin(distM: Float, mode: Int): Int =
+    if (mode == 0) ((distM / 1000f * 1.35f) / 28f * 60f + 2f).roundToInt()
+    else ((distM / 1000f * 1.25f) / 4.8f * 60f).roundToInt().coerceAtLeast(1)
+
+/** Nächste noch kommende Iqamah einer Moschee: (Gebet, Adhan-Text, Iqamah-Zeitpunkt). */
+internal fun nextIqamah(m: Mosque, evs: List<Ev>, now: Long): Triple<Ev, String, Long>? {
+    if (m.iqamah.isEmpty()) return null
+    for (e in evs) {
+        if (!e.kind.prayer || e.at < now - 3 * 3600_000L) continue
+        val key = if (e.isJumuah && m.iqamah.containsKey("JUMUAH")) "JUMUAH" else e.kind.name
+        val iq = m.iqamah[key] ?: continue
+        val parts = iq.split(":")
+        val ms = try {
+            e.day.atTime(parts[0].toInt(), parts[1].toInt()).atZone(Times.zone()).toInstant().toEpochMilli()
+        } catch (ex: Exception) {
+            continue
+        }
+        if (ms > now) return Triple(e, m.adhan[key] ?: Fmt.time(e.at), ms)
+    }
+    return null
+}
+
+/** Ankunfts-Hinweis: Text + Farbe. */
+internal fun arrivalChip(iqMs: Long?, now: Long, travel: Int): Pair<String, Color> {
+    val arr = now + travel * 60_000L
+    if (iqMs == null) return t("arr_none", Fmt.time(arr)) to Color(0xFF8E8E93)
+    val diff = ((iqMs - arr) / 60_000L).toInt()
+    return when {
+        diff >= 3 -> t("arr_ok", Fmt.time(arr), diff) to Color(0xFF248A3D)
+        diff >= 0 -> t("arr_tight", Fmt.time(arr), diff) to Color(0xFFB25000)
+        diff > -6 -> t("arr_late", Fmt.time(arr), -diff) to Color(0xFFC93400)
+        else -> t("arr_missed") to Color(0xFFD70015)
+    }
+}
+
+@Composable
+internal fun ArrivalChip(text: String, color: Color) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.13f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Txt(text, 13, FontWeight.SemiBold, color, maxLines = 1)
+    }
+}
+
 
 /**
  * Blatt zum Hoch- und Runterziehen (wie Apple Karten):
@@ -90,7 +141,8 @@ fun BoxScope.MosqueBottomSheet(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     var parentPx by remember { mutableFloatStateOf(0f) }
-    val peekPx = with(density) { 84.dp.toPx() }
+    val peekDp = 72.dp
+    val peekPx = with(density) { peekDp.toPx() }
     val maxPx = maxOf(peekPx + 1f, if (parentPx > 0f) parentPx * 0.86f else with(density) { 420.dp.toPx() })
     val h = remember { Animatable(peekPx) }
 
@@ -99,10 +151,14 @@ fun BoxScope.MosqueBottomSheet(
         if (selected != null) h.animateTo(maxPx, spring(dampingRatio = 0.85f))
     }
 
-    val sorted = remember(mosques, lat, lng) {
-        mosques.map { it to Mosques.distance(lat, lng, it.lat, it.lng) }.sortedBy { it.second }.take(80)
-    }
     val evs = remember(now / 60_000L) { Times.around(now) }
+    val sortMode = Prefs.sortMode
+    val mode = Prefs.travelMode
+    val sorted = remember(mosques, lat, lng, sortMode, now / 60_000L) {
+        val byDist = mosques.map { it to Mosques.distance(lat, lng, it.lat, it.lng) }.sortedBy { it.second }.take(80)
+        if (sortMode == 1) byDist.sortedWith(compareBy({ nextIqamah(it.first, evs, now)?.third ?: Long.MAX_VALUE }, { it.second }))
+        else byDist
+    }
     val expanded = h.value > (peekPx + maxPx) / 2f
 
     fun toggle() {
@@ -140,7 +196,8 @@ fun BoxScope.MosqueBottomSheet(
                         h.animateTo(target, spring(dampingRatio = 0.85f))
                     }
                 )
-                .clickable { if (selected == null) toggle() }
+                .tap { if (selected == null) toggle() }
+                .then(if (selected == null) Modifier.height(peekDp) else Modifier)
                 .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 10.dp)
         ) {
             Box(
@@ -157,35 +214,41 @@ fun BoxScope.MosqueBottomSheet(
                         val mCount = sorted.count { it.first.category == "Moschee" }
                         val oCount = sorted.size - mCount
                         Txt(
-                            status ?: if (sorted.isEmpty()) "Keine Moscheen geladen" else "${sorted.size} Gebetsorte in der Nähe",
+                            status ?: if (sorted.isEmpty()) t("none_loaded") else t("n_places", sorted.size),
                             18, FontWeight.Bold, maxLines = 1
                         )
-                        Txt(
-                            if (expanded) "$mCount Moscheen · $oCount Gebetsräume/Vereine"
-                            else "Nach oben ziehen für die Liste",
-                            13, color = p.sub, maxLines = 1
-                        )
+                        if (expanded) Txt(t("count_split", mCount, oCount), 13, color = p.sub, maxLines = 1)
                     } else {
                         Txt(selected.name, 18, FontWeight.Bold, maxLines = 2)
                         val d = Mosques.distance(lat, lng, selected.lat, selected.lng)
                         Txt(
-                            listOf(selected.category, selected.address, Mosques.fmtDist(d)).filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(if (selected.category == "Moschee") t("cat_mosque") else t("cat_room"), selected.address, Mosques.fmtDist(d)).filter { it.isNotBlank() }.joinToString(" · "),
                             13, color = p.sub, maxLines = 2
                         )
                     }
                 }
                 if (selected != null) {
                     Box(
-                        Modifier.size(36.dp).clip(CircleShape).background(p.fill).clickable(onClick = onClose),
+                        Modifier.size(36.dp).clip(CircleShape).background(p.fill).tap(onClick = onClose),
                         contentAlignment = Alignment.Center
                     ) { Txt("✕", 14, FontWeight.Bold, p.sub) }
                 } else {
-                    Txt(if (expanded) "Runter" else "Hoch", 13, FontWeight.SemiBold, Color(0xFF007AFF))
+                    Chevron(expanded)
                 }
             }
         }
 
-        if (selected == null) {
+        if (selected == null && h.value > peekPx + 4f) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.weight(1f)) {
+                    Segmented(listOf(t("sort_near"), t("sort_iq")), sortMode) { Prefs.sortMode = it }
+                }
+                Segmented(listOf("🚗", "🚶"), mode) { Prefs.travelMode = it }
+            }
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -193,12 +256,19 @@ fun BoxScope.MosqueBottomSheet(
             ) {
                 items(sorted, key = { it.first.id }) { (m, d) ->
                     val nx = if (hasTimes(m)) nextFor(m, evs, now) else null
-                    Row(
+                    val niq = nextIqamah(m, evs, now)
+                    val travel = travelMin(d, mode)
+                    val chip = arrivalChip(niq?.third, now, travel)
+                    Column(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
                             .background(p.bg)
-                            .clickable { onPick(m) }
+                            .tap(scale = 0.98f) { onPick(m) }
+                    ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -210,20 +280,26 @@ fun BoxScope.MosqueBottomSheet(
                         ) { Txt(if (m.category == "Moschee") "☪" else "◆", 16, color = Color.White) }
                         Column(Modifier.weight(1f)) {
                             Txt(m.name, 15, FontWeight.SemiBold, maxLines = 1)
-                            if (nx != null) {
-                                Txt("${nx.first} ${nx.second} · Iqamah ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                            if (niq != null) {
+                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                            } else if (nx != null) {
+                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else {
-                                Txt("Keine Zeiten verfügbar", 13, FontWeight.Medium, p.sub, maxLines = 1)
+                                Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
                             }
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Txt(Mosques.fmtDist(d), 13, color = p.sub)
-                            Txt(if (m.category == "Moschee") "Moschee" else "Verein", 11, FontWeight.SemiBold, p.sub)
+                            Txt((if (mode == 0) "🚗 " else "🚶 ") + t("travel_min", travel), 14, FontWeight.Bold)
+                            Txt(Mosques.fmtDist(d), 12, color = p.sub)
                         }
+                    }
+                    if (hasTimes(m)) {
+                        Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) { ArrivalChip(chip.first, chip.second) }
+                    }
                     }
                 }
             }
-        } else {
+        } else if (selected != null) {
             MosqueDetail(selected, evs, now, onEdit, onRemove, onUpdated)
         }
     }
@@ -256,9 +332,9 @@ private fun MosqueDetail(
             main.post {
                 busy = false
                 when {
-                    res == null -> info = "Seite konnte nicht geladen werden – Link und Internet prüfen."
+                    res == null -> info = t("page_failed")
                     res.adhan.isEmpty() && res.iqamah.isEmpty() ->
-                        info = "Auf der Seite wurden keine Zeiten gefunden. Bitte Iqamah von Hand eintragen."
+                        info = t("no_times_found")
                     else -> onUpdated(Mosques.attachLink(ctx, m, res))
                 }
             }
@@ -273,16 +349,20 @@ private fun MosqueDetail(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (hasTimes(m)) {
+            val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
+            val tr = travelMin(dist, Prefs.travelMode)
+            val ch = arrivalChip(nextIqamah(m, evs, now)?.third, now, tr)
+            ArrivalChip((if (Prefs.travelMode == 0) "🚗 " else "🚶 ") + t("travel_min", tr) + " · " + ch.first, ch.second)
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
-                Txt("Gebet", 12, FontWeight.SemiBold, p.sub, Modifier.weight(1f))
-                Txt("Adhan", 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
-                Txt("Iqamah", 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
+                Txt(t("prayer"), 12, FontWeight.SemiBold, p.sub, Modifier.weight(1f))
+                Txt(t("adhan"), 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
+                Txt(t("iqamah"), 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg)) {
                 val prayers = listOf(Kind.FAJR, Kind.DHUHR, Kind.ASR, Kind.MAGHRIB, Kind.ISHA)
                 val rows: List<Triple<String, Ev?, String>> =
                     prayers.map { k -> Triple(k.label, evs.firstOrNull { it.kind == k && it.day == today }, k.name) } +
-                        (if (m.adhan.containsKey("JUMUAH") || m.iqamah.containsKey("JUMUAH")) listOf(Triple("Jumuah", null, "JUMUAH")) else emptyList())
+                        (if (m.adhan.containsKey("JUMUAH") || m.iqamah.containsKey("JUMUAH")) listOf(Triple(t("k_JUMUAH"), null, "JUMUAH")) else emptyList())
                 rows.forEach { (label, e, key) ->
                     val isNext = e != null && next != null && e.kind == next.kind && e.day == next.day
                     val c = if (isNext) Color.White else p.text
@@ -301,8 +381,8 @@ private fun MosqueDetail(
                 }
             }
             Txt(
-                if (m.url != null && m.fetchedAt > 0) "Zeiten von ${m.source} · aktualisiert ${Fmt.time(m.fetchedAt)}"
-                else "Iqamah von Hand eingetragen",
+                if (m.url != null && m.fetchedAt > 0) t("times_from", m.source, Fmt.time(m.fetchedAt))
+                else t("iq_manual"),
                 12, color = p.sub
             )
         } else {
@@ -312,13 +392,13 @@ private fun MosqueDetail(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Txt("🕓", 26)
-                Txt("Keine Zeiten verfügbar", 16, FontWeight.SemiBold)
+                Txt(t("no_times"), 16, FontWeight.SemiBold)
                 Txt(
-                    "Füge den Link der Moschee von MasjidBox oder Mawaqit hinzu – die App liest Adhan und Iqamah dann automatisch aus.",
+                    t("no_times_sub"),
                     13, color = p.sub, align = TextAlign.Center
                 )
             }
-            Txt("LINK DER MOSCHEE", 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+            Txt(t("link_label"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg)
                     .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
@@ -326,7 +406,7 @@ private fun MosqueDetail(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(Modifier.weight(1f)) {
-                    if (link.isEmpty()) Txt("z. B. masjidbox.com/gebetszeiten/…", 14, color = p.sub, maxLines = 1)
+                    if (link.isEmpty()) Txt(t("link_hint"), 14, color = p.sub, maxLines = 1)
                     BasicTextField(
                         value = link,
                         onValueChange = { link = it },
@@ -338,9 +418,9 @@ private fun MosqueDetail(
                     )
                 }
                 Box(
-                    Modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xFF007AFF)).clickable { loadLink() }
+                    Modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xFF007AFF)).tap { loadLink() }
                         .padding(horizontal = 12.dp, vertical = 9.dp)
-                ) { Txt(if (busy) "Lädt …" else "Link hinzufügen", 14, FontWeight.SemiBold, Color.White) }
+                ) { Txt(if (busy) t("loading") else t("add_link"), 14, FontWeight.SemiBold, Color.White) }
             }
         }
         info?.let { Txt(it, 13, FontWeight.SemiBold, Color(0xFFFF3B30)) }
@@ -348,27 +428,53 @@ private fun MosqueDetail(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
             Box(
                 Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF007AFF))
-                    .clickable {
+                    .tap {
                         try {
                             ctx.startActivity(
                                 Intent(Intent.ACTION_VIEW, Uri.parse("geo:${m.lat},${m.lng}?q=${m.lat},${m.lng}(${Uri.encode(m.name)})"))
                             )
                         } catch (e: Exception) {
-                            info = "Keine Navigations-App gefunden (z. B. Vela Maps)"
+                            info = t("no_nav")
                         }
                     },
                 contentAlignment = Alignment.Center
-            ) { Txt("Route", 15, FontWeight.SemiBold, Color.White) }
+            ) { Txt(t("route"), 15, FontWeight.SemiBold, Color.White) }
             Box(
                 Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(p.fill)
-                    .clickable { onEdit(m) },
+                    .tap { onEdit(m) },
                 contentAlignment = Alignment.Center
-            ) { Txt(if (hasTimes(m)) "Iqamah bearbeiten" else "Von Hand eintragen", 15, FontWeight.SemiBold, Color(0xFF007AFF)) }
+            ) { Txt(if (hasTimes(m)) t("edit_iq") else t("enter_manual"), 15, FontWeight.SemiBold, Color(0xFF007AFF)) }
         }
         if (m.custom) {
             Txt(
-                "Entfernen", 15, color = Color(0xFFFF3B30),
-                modifier = Modifier.clickable { onRemove(m) }.padding(vertical = 8.dp)
+                t("remove"), 15, color = Color(0xFFFF3B30),
+                modifier = Modifier.tap { onRemove(m) }.padding(vertical = 8.dp)
+            )
+        }
+    }
+}
+
+
+/** Pfeil nach oben/unten wie bei Apple. */
+@Composable
+private fun Chevron(expanded: Boolean) {
+    val p = LocalPal.current
+    val rot by androidx.compose.animation.core.animateFloatAsState(if (expanded) 180f else 0f, label = "chev")
+    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+        rotate(rot) {
+            val w = size.width
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(w * 0.25f, w * 0.62f)
+                lineTo(w * 0.5f, w * 0.37f)
+                lineTo(w * 0.75f, w * 0.62f)
+            }
+            drawPath(
+                path, p.sub,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = w * 0.11f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                )
             )
         }
     }

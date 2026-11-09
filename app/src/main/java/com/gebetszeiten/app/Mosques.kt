@@ -305,7 +305,8 @@ object Mosques {
 
     /** Link an eine vorhandene Moschee hängen: sie wird zur eigenen Moschee mit Zeiten. */
     fun attachLink(ctx: Context, m: Mosque, d: Draft): Mosque {
-        val nm = if (m.name == "Moschee" || m.name == "Gebetsraum") d.name else m.name
+        val generic = m.name.isBlank() || m.name.equals("Moschee", true) || m.name.equals("Gebetsraum", true) || m.name.equals("Mosque", true)
+        val nm = if (generic) d.name else m.name
         val newM = m.copy(
             id = if (m.custom) m.id else "own-" + m.id,
             name = nm,
@@ -324,14 +325,24 @@ object Mosques {
 
     // ---------------- Adresse → Position (OpenStreetMap Nominatim) ----------------
 
-    fun geocode(query: String): Pair<Double, Double>? = try {
-        val arr = JSONArray(
-            httpGet("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + URLEncoder.encode(query, "UTF-8"))
+    /** Adresse → Position. Bevorzugt Treffer in deiner Umgebung (±0,6°), erst danach weltweit. */
+    fun geocode(query: String, nearLat: Double = Prefs.lat, nearLng: Double = Prefs.lng): Pair<Double, Double>? {
+        fun ask(extra: String): Pair<Double, Double>? = try {
+            val arr = JSONArray(
+                httpGet(
+                    "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
+                        URLEncoder.encode(query, "UTF-8") + extra
+                )
+            )
+            if (arr.length() == 0) null
+            else arr.getJSONObject(0).let { it.getString("lat").toDouble() to it.getString("lon").toDouble() }
+        } catch (e: Exception) {
+            null
+        }
+        val box = "&bounded=1&viewbox=%.4f,%.4f,%.4f,%.4f".format(
+            Locale.US, nearLng - 0.6, nearLat + 0.6, nearLng + 0.6, nearLat - 0.6
         )
-        if (arr.length() == 0) null
-        else arr.getJSONObject(0).let { it.getString("lat").toDouble() to it.getString("lon").toDouble() }
-    } catch (e: Exception) {
-        null
+        return ask(box) ?: ask("")
     }
 
     // ---------------- MasjidBox / Mawaqit ----------------
@@ -410,6 +421,18 @@ object Mosques {
         return "%02d:%02d".format(total / 60, total % 60)
     }
 
+    /** Name aus dem Link bilden, z. B. …/orientalisches-kulturzentrum-al-rahma → Orientalisches Kulturzentrum Al-Rahma */
+    fun nameFromUrl(url: String): String {
+        val slug = url.trimEnd('/').substringAfterLast('/').substringBefore('?')
+        if (slug.isBlank()) return "Moschee"
+        return slug.split('-').filter { it.isNotBlank() }.joinToString(" ") { w ->
+            when {
+                w.length <= 2 && w.lowercase() in setOf("al", "el", "ar", "an", "as", "at", "ad") -> w.replaceFirstChar { it.uppercase() } + "-"
+                else -> w.replaceFirstChar { it.uppercase() }
+            }
+        }.replace("- ", "-")
+    }
+
     data class Draft(
         val name: String,
         val address: String,
@@ -425,11 +448,17 @@ object Mosques {
     fun fetchDraft(url: String): Draft {
         val u = url.trim().let { if (it.startsWith("http")) it else "https://$it" }
         val html = httpGet(u)
-        val title = Regex("(?is)<title>(.*?)</title>").find(html)?.groupValues?.get(1)?.let { strip(it) } ?: ""
+        val title = Regex("(?is)<title[^>]*>(.*?)</title>").find(html)?.groupValues?.get(1)?.let { strip(it) }
+            ?.takeIf { it.isNotBlank() }
+            ?: Regex("(?is)<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"'](.*?)[\"']").find(html)?.groupValues?.get(1)?.let { decode(it) }
+            ?: Regex("(?is)<h1[^>]*>(.*?)</h1>").find(html)?.groupValues?.get(1)?.let { strip(it) }
+            ?: ""
         if (u.contains("mawaqit", ignoreCase = true)) {
             fun f(key: String) = Regex("\"$key\"\\s*:\\s*\"(.*?)(?<!\\\\)\"").find(html)?.groupValues?.get(1)?.let { jsonStr(it) }
             fun n(key: String) = Regex("\"$key\"\\s*:\\s*(-?[0-9.]+)").find(html)?.groupValues?.get(1)?.toDoubleOrNull()
-            val name = f("name") ?: title.substringBefore(" - ").ifBlank { "Moschee" }
+            val name = f("name")?.takeIf { it.isNotBlank() }
+                ?: title.substringBefore(" - ").takeIf { it.isNotBlank() }
+                ?: nameFromUrl(u)
             val addr = f("localisation") ?: f("address") ?: ""
             val keys = listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA")
             val adhan = LinkedHashMap<String, String>()
@@ -460,10 +489,12 @@ object Mosques {
             return Draft(name, addr, n("latitude"), n("longitude"), "Mawaqit", u, adhan, iq)
         }
         // MasjidBox (und andere Seiten): Text auslesen
-        val name = title
+        val cleaned = title
             .replace(Regex("(?i)^(Gebetszeiten von|Prayer times of|Prayer times for|Horaires de prière de|Horaires des prières de)\\s+"), "")
             .replace(Regex("(?i)\\s*[-|–]\\s*Masjidbox.*$"), "")
-            .ifBlank { "Moschee" }
+            .trim()
+        val name = cleaned.takeIf { it.isNotBlank() && !it.equals("Masjidbox", true) && !it.equals("Moschee", true) }
+            ?: nameFromUrl(u)
         val addr = Regex("(?is)<h2[^>]*>(.*?)</h2>").find(html)?.groupValues?.get(1)?.let { strip(it) } ?: ""
         val (adhan, iq) = parseTimes(strip(html))
         return Draft(name, addr, null, null, if (u.contains("masjidbox", true)) "MasjidBox" else "Webseite", u, adhan, iq)

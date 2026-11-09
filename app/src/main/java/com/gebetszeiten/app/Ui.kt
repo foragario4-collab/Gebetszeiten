@@ -40,6 +40,29 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.window.Dialog
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
+
+/**
+ * Apple-artiger Tipp-Effekt: kein eckiger grauer Kasten, sondern kurz kleiner und blasser.
+ */
+fun Modifier.tap(enabled: Boolean = true, scale: Float = 0.96f, onClick: () -> Unit): Modifier = composed {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by animateFloatAsState(if (pressed) scale else 1f, label = "tapScale")
+    val al by animateFloatAsState(if (pressed) 0.6f else 1f, label = "tapAlpha")
+    this
+        .graphicsLayer {
+            scaleX = sc
+            scaleY = sc
+            alpha = al
+        }
+        .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
+}
 
 data class Pal(
     val bg: Color,
@@ -128,7 +151,7 @@ fun RowBase(first: Boolean, onClick: (() -> Unit)? = null, content: @Composable 
         if (!first) Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(0.5.dp).background(p.line))
         val m = Modifier.fillMaxWidth()
         Row(
-            (if (onClick != null) m.clickable(onClick = onClick) else m)
+            (if (onClick != null) m.tap(scale = 0.985f, onClick = onClick) else m)
                 .heightIn(min = 48.dp)
                 .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -155,7 +178,7 @@ fun IosSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
             .size(51.dp, 31.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(if (checked) Color(0xFF34C759) else p.fill)
-            .clickable { onChange(!checked) }
+            .tap(scale = 0.94f) { onChange(!checked) }
     ) {
         Box(
             Modifier
@@ -199,11 +222,11 @@ fun StepperRow(label: String, value: String, first: Boolean = false, onMinus: ()
         LabelCol(label)
         Txt(value, 15, color = p.sub, align = TextAlign.End, modifier = Modifier.width(64.dp))
         Row(Modifier.clip(RoundedCornerShape(8.dp)).background(p.fill)) {
-            Box(Modifier.size(46.dp, 32.dp).clickable(onClick = onMinus), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(46.dp, 32.dp).tap(onClick = onMinus), contentAlignment = Alignment.Center) {
                 Txt("−", 20)
             }
             Box(Modifier.width(1.dp).height(32.dp).padding(vertical = 7.dp).background(p.sub.copy(alpha = 0.3f)))
-            Box(Modifier.size(46.dp, 32.dp).clickable(onClick = onPlus), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(46.dp, 32.dp).tap(onClick = onPlus), contentAlignment = Alignment.Center) {
                 Txt("+", 20)
             }
         }
@@ -219,7 +242,7 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
                 Modifier
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (i == selected) p.seg else Color.Transparent)
-                    .clickable { onSelect(i) }
+                    .tap { onSelect(i) }
                     .heightIn(min = 34.dp)
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
@@ -280,7 +303,7 @@ fun ChoiceDialog(c: Choice, onDismiss: () -> Unit) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { c.onPick(i); onDismiss() }
+                        .tap(scale = 0.985f) { c.onPick(i); onDismiss() }
                         .padding(horizontal = 18.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

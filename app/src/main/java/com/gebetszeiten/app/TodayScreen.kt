@@ -31,6 +31,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.delay
 
 fun hasLocPermission(ctx: Context): Boolean =
@@ -38,7 +43,7 @@ fun hasLocPermission(ctx: Context): Boolean =
         ctx.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 @Composable
-fun TodayScreen(v: Int) {
+fun TodayScreen(v: Int, onSettings: () -> Unit = {}) {
     val p = LocalPal.current
     val ctx = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -58,7 +63,7 @@ fun TodayScreen(v: Int) {
                     if (d[0] > 3000f) {
                         Prefs.lat = loc.latitude
                         Prefs.lng = loc.longitude
-                        Prefs.place = "Mein Standort"
+                        Prefs.place = t("my_location")
                         Scheduler.reschedule(ctx)
                         Loc.placeName(ctx, loc.latitude, loc.longitude) { n ->
                             if (n != null) {
@@ -79,27 +84,69 @@ fun TodayScreen(v: Int) {
     val next = evs[ni]
     val prev = evs[ni - 1]
     val frac = ((now - prev.at).toFloat() / (next.at - prev.at).coerceAtLeast(1)).coerceIn(0f, 1f)
-    val list = evs.filter { it.day == today }
+    var offset by rememberSaveable { mutableIntStateOf(0) }
+    val isToday = offset == 0
+    val day = today.plusDays(offset.toLong())
+    val dayMs = day.atTime(12, 0).atZone(Times.zone()).toInstant().toEpochMilli()
+    val list = if (isToday) evs.filter { it.day == today } else remember(day, v) { Times.events(day, 1) }
+    val title = when (offset) {
+        0 -> t("today_title")
+        1 -> t("tomorrow")
+        -1 -> t("yesterday")
+        else -> t("prayer_times")
+    }
 
     ScreenColumn {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f)) {
-                Txt(DateText.headerTop(today).uppercase(), 13, FontWeight.SemiBold, p.sub)
-                Txt("Heute", 34, FontWeight.Bold)
-                DateText.headerSub(today)?.let { Txt(it, 15, color = p.sub) }
-            }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Txt(title, 34, FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
             Box(
                 Modifier
                     .clip(RoundedCornerShape(18.dp))
                     .background(p.card)
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Txt(Prefs.place, 15, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                Txt(Prefs.place, 14, FontWeight.SemiBold, p.accentText, maxLines = 1, modifier = Modifier.widthIn(max = 130.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(p.card)
+                    .tap(scale = 0.9f, onClick = onSettings),
+                contentAlignment = Alignment.Center
+            ) { SlidersIcon(p.accentText) }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // Tag wechseln
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(p.card).padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DayArrow(left = true) { offset-- }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Txt(DateText.headerTop(dayMs), 15, FontWeight.SemiBold, maxLines = 1, align = TextAlign.Center)
+                Txt(Hijri.text(dayMs), 12, color = p.sub, maxLines = 1, align = TextAlign.Center)
+            }
+            DayArrow(left = false) { offset++ }
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = !isToday) {
+            Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(17.dp))
+                        .background(p.accent)
+                        .tap { offset = 0 }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) { Txt("↺ " + t("tab_today"), 14, FontWeight.SemiBold, Color.White) }
             }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
 
-        // Nächstes Gebet
+        // Nächstes Gebet (nur heute)
+        if (isToday) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -108,7 +155,7 @@ fun TodayScreen(v: Int) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Txt("NÄCHSTES", 13, FontWeight.SemiBold, Color.White.copy(alpha = 0.85f))
+            Txt(t("next_up"), 13, FontWeight.SemiBold, Color.White.copy(alpha = 0.85f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                 Txt(next.title, 36, FontWeight.Bold, Color.White, Modifier.weight(1f), maxLines = 1)
                 Txt(Fmt.time(next.at), 36, FontWeight.Light, Color.White)
@@ -130,22 +177,23 @@ fun TodayScreen(v: Int) {
             }
             Row(Modifier.fillMaxWidth()) {
                 Txt("${prev.title} ${Fmt.time(prev.at)}", 14, FontWeight.Medium, Color.White, Modifier.weight(1f))
-                Txt("noch ${Fmt.countdown(next.at - now)}", 14, FontWeight.Medium, Color.White)
+                Txt(t("still", Fmt.countdown(next.at - now)), 14, FontWeight.Medium, Color.White)
             }
         }
         Spacer(Modifier.height(18.dp))
+        }
 
         // Liste
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(p.card)) {
             list.forEachIndexed { i, e ->
-                PrayerRow(ctx, e, first = i == 0, isNext = e == next, past = e.at <= now, today = today)
+                PrayerRow(ctx, e, first = i == 0, isNext = isToday && e == next, past = isToday && e.at <= now, today = day)
             }
         }
         Spacer(Modifier.height(18.dp))
 
         // Nacht-Info
         val maghrib = list.firstOrNull { it.kind == Kind.MAGHRIB }
-        val fajrNext = maghrib?.let { m -> evs.firstOrNull { it.kind == Kind.FAJR && it.at > m.at } }
+        val fajrNext = maghrib?.let { m -> (if (isToday) evs else Times.events(day, 2)).firstOrNull { it.kind == Kind.FAJR && it.at > m.at } }
         if (maghrib != null && fajrNext != null) {
             Column(
                 Modifier
@@ -155,20 +203,20 @@ fun TodayScreen(v: Int) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Txt("Die Nacht", 16, FontWeight.SemiBold)
+                Txt(t("the_night"), 16, FontWeight.SemiBold)
                 Txt(
-                    "Maghrib ${Fmt.time(maghrib.at)} → Fajr ${Fmt.time(fajrNext.at)} = ${Fmt.duration(fajrNext.at - maghrib.at)}",
+                    t("night_line", Fmt.time(maghrib.at), Fmt.time(fajrNext.at), Fmt.duration(fajrNext.at - maghrib.at)),
                     13, color = p.sub
                 )
-                val mm = if (Prefs.midnightMode == "sunrise") "Maghrib bis Sonnenaufgang" else "Maghrib bis Fajr"
-                Txt("Mitternacht = Hälfte ($mm)", 13, color = p.sub)
-                Txt("Letztes Drittel = Maghrib + ⅔ der Nacht", 13, color = p.sub)
+                val mm = if (Prefs.midnightMode == "sunrise") t("mm_sunrise") else t("mm_fajr")
+                Txt(t("midnight_def", mm), 13, color = p.sub)
+                Txt(t("third_def"), 13, color = p.sub)
             }
             Spacer(Modifier.height(12.dp))
         }
         val m = PrayerCalc.method(Prefs.method)
         Txt(
-            "${m.name} · Asr ${if (Prefs.asr == 2) "Hanafi" else "Standard"}",
+            "${m.label} · ${Kind.ASR.label} ${if (Prefs.asr == 2) t("asr_hanafi") else t("asr_std")}",
             12, color = p.sub, modifier = Modifier.padding(start = 16.dp)
         )
     }
@@ -179,9 +227,9 @@ private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past
     val p = LocalPal.current
     val weight = if (isNext) FontWeight.Bold else FontWeight.Medium
     val tag = when (e.kind) {
-        Kind.SUNRISE -> "Ende Fajr"
-        Kind.MIDNIGHT -> "Ende Isha"
-        Kind.LAST_THIRD -> if (Times.today(e.at).isAfter(today)) "Tahajjud · morgen früh" else "Tahajjud"
+        Kind.SUNRISE -> t("end_fajr")
+        Kind.MIDNIGHT -> t("end_isha")
+        Kind.LAST_THIRD -> if (Times.today(e.at).isAfter(today)) t("tahajjud_tom") else t("tahajjud")
         else -> null
     }
     Column(Modifier.fillMaxWidth().background(if (isNext) p.hl else Color.Transparent)) {
@@ -214,18 +262,62 @@ private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past
 private fun ModeChip(ctx: Context, k: Kind) {
     val p = LocalPal.current
     val mode = Prefs.mode(k)
-    val labels = listOf("Aus", "Ton", "Adhan")
+    val labels = listOf(t("mode_off"), t("mode_tone"), t("mode_adhan"))
     val max = if (k.prayer) 2 else 1
     Box(
         Modifier
             .clip(RoundedCornerShape(12.dp))
             .background(if (mode > 0) p.hl else p.fill)
-            .clickable {
+            .tap {
                 Prefs.setMode(k, (mode + 1) % (max + 1))
                 Scheduler.reschedule(ctx)
             }
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
         Txt(labels[mode.coerceIn(0, 2)], 12, FontWeight.SemiBold, if (mode > 0) p.accentText else p.sub)
+    }
+}
+
+
+@Composable
+private fun DayArrow(left: Boolean, onClick: () -> Unit) {
+    val p = LocalPal.current
+    val rtl = Prefs.lang.rtl
+    Box(
+        Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(p.bg).tap(scale = 0.88f, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        val c = p.accentText
+        androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+            val w = size.width
+            val pointLeft = left != rtl
+            val path = androidx.compose.ui.graphics.Path().apply {
+                if (pointLeft) {
+                    moveTo(w * 0.62f, w * 0.2f); lineTo(w * 0.32f, w * 0.5f); lineTo(w * 0.62f, w * 0.8f)
+                } else {
+                    moveTo(w * 0.38f, w * 0.2f); lineTo(w * 0.68f, w * 0.5f); lineTo(w * 0.38f, w * 0.8f)
+                }
+            }
+            drawPath(
+                path, c,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = w * 0.14f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlidersIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+        val s = size.width
+        val sw = s * 0.085f
+        drawLine(c, androidx.compose.ui.geometry.Offset(s * 0.1f, s * 0.3f), androidx.compose.ui.geometry.Offset(s * 0.9f, s * 0.3f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(c, androidx.compose.ui.geometry.Offset(s * 0.1f, s * 0.7f), androidx.compose.ui.geometry.Offset(s * 0.9f, s * 0.7f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawCircle(c, s * 0.13f, androidx.compose.ui.geometry.Offset(s * 0.66f, s * 0.3f))
+        drawCircle(c, s * 0.13f, androidx.compose.ui.geometry.Offset(s * 0.34f, s * 0.7f))
     }
 }

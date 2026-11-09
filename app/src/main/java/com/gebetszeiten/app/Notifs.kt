@@ -28,8 +28,7 @@ object Notifs {
 
     fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
-        val prayer = NotificationChannel(CH_PRAYER, "Gebetszeit (mit Ton)", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Mitteilung zur Gebetszeit mit Ton"
+        val prayer = NotificationChannel(CH_PRAYER, t("ch_prayer"), NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(
                 RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
@@ -37,15 +36,12 @@ object Notifs {
             enableLights(true)
             lightColor = Color.GREEN
         }
-        val quiet = NotificationChannel(CH_QUIET, "Gebetszeit (Adhan)", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Mitteilung während der Adhan läuft"
+        val quiet = NotificationChannel(CH_QUIET, t("ch_quiet"), NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(null, null)
         }
-        val remind = NotificationChannel(CH_REMIND, "Erinnerung vorher", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Erinnerung einige Minuten vor dem Gebet"
+        val remind = NotificationChannel(CH_REMIND, t("ch_remind"), NotificationManager.IMPORTANCE_DEFAULT).apply {
         }
-        val live = NotificationChannel(CH_LIVE, "Live-Countdown", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Laufender Countdown bis zum nächsten Gebet"
+        val live = NotificationChannel(CH_LIVE, t("ch_live"), NotificationManager.IMPORTANCE_DEFAULT).apply {
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
@@ -65,16 +61,16 @@ object Notifs {
             Intent(ctx, AlarmReceiver::class.java).setAction(ACTION_DONE).putExtra("id", id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return Notification.Action.Builder(null, "Gebetet ✓", pi).build()
+        return Notification.Action.Builder(null, t("n_prayed"), pi).build()
     }
 
     fun prayerTitle(ev: Ev) = "${ev.title} · ${Fmt.time(ev.at)}"
 
     fun prayerText(ev: Ev): String = when (ev.kind) {
-        Kind.SUNRISE -> "Sonnenaufgang – die Fajr-Zeit ist zu Ende."
-        Kind.LAST_THIRD -> "Das letzte Drittel der Nacht beginnt – Zeit für Tahajjud."
-        Kind.MIDNIGHT -> "Islamische Mitternacht – Ende der Isha-Zeit."
-        else -> "Es ist Zeit für das ${ev.title}-Gebet."
+        Kind.SUNRISE -> t("n_sunrise")
+        Kind.LAST_THIRD -> t("n_third")
+        Kind.MIDNIGHT -> t("n_midnight")
+        else -> t("n_time_for", ev.title)
     }
 
     fun buildPrayer(ctx: Context, ev: Ev, channel: String): Notification {
@@ -128,8 +124,8 @@ object Notifs {
         val n = Notification.Builder(ctx, CH_REMIND)
             .setSmallIcon(R.drawable.ic_notif)
             .setColor(ACCENT)
-            .setContentTitle("${ev.title} in $min Minuten")
-            .setContentText("Das ${ev.title}-Gebet beginnt um ${Fmt.time(ev.at)}.")
+            .setContentTitle(t("n_in_min", ev.title, min))
+            .setContentText(t("n_begins", ev.title, Fmt.time(ev.at)))
             .setContentIntent(openApp(ctx))
             .setAutoCancel(true)
             .setTimeoutAfter((ev.at - System.currentTimeMillis()).coerceAtLeast(60_000L))
@@ -179,11 +175,8 @@ object Notifs {
     /** Kurzer Text für den Chip in der Statusleiste, z. B. „Mit. 2:32“ oder „Asr 18m“. */
     fun chipText(ev: Ev, msLeft: Long): String {
         val name = when (ev.kind) {
-            Kind.MIDNIGHT -> "Mit."
-            Kind.LAST_THIRD -> "Dritt."
-            Kind.MAGHRIB -> "Magh."
-            Kind.SUNRISE -> "Shur."
-            Kind.DHUHR -> if (ev.title == "Jumuah") "Jum." else "Dhuhr"
+            Kind.MIDNIGHT, Kind.LAST_THIRD, Kind.MAGHRIB, Kind.SUNRISE -> t("c_${ev.kind.name}")
+            Kind.DHUHR -> if (ev.isJumuah) t("c_JUMUAH") else t("c_DHUHR")
             else -> ev.kind.short
         }
         val mins = ((msLeft + 59_999L) / 60_000L).coerceAtLeast(0)
@@ -200,13 +193,14 @@ object Notifs {
         val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
         val minsLeft = ((ev.at - now + 59_999L) / 60_000L).coerceAtLeast(0)
         val isMid = ev.kind == Kind.MIDNIGHT
+        val isSun = ev.kind == Kind.SUNRISE
         val col = if (isMid) 0xFF5E5CE6.toInt() else ACCENT
         val b = Notification.Builder(ctx, CH_LIVE)
             .setSmallIcon(R.drawable.ic_notif)
             .setColor(col)
-            .setContentTitle("${ev.title} um ${Fmt.time(ev.at)}")
-            .setContentText(if (isMid) "Ende der Isha-Zeit" else "Countdown bis zum Gebet")
-            .setSubText(if (isMid) "Ende der Isha-Zeit" else "Nächstes Gebet")
+            .setContentTitle(t("n_at", ev.title, Fmt.time(ev.at)))
+            .setContentText(if (isMid) t("n_end_isha") else if (isSun) t("end_fajr") else t("n_countdown"))
+            .setSubText(if (isMid) t("n_end_isha") else if (isSun) t("end_fajr") else t("n_next"))
             .setContentIntent(openApp(ctx))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -219,7 +213,7 @@ object Notifs {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addExtras(extras)
         val chip = chipText(ev, ev.at - now)
-        applyLiveStyle(b, done, chip, if (isMid) 0xFFA5A5FF.toInt() else 0xFF4FD6BC.toInt())
+        applyLiveStyle(b, done, chip, if (isMid) 0xFFA5A5FF.toInt() else if (isSun) 0xFFFFC94D.toInt() else 0xFF4FD6BC.toInt())
         nm.notify(LIVE_ID, b.build())
     }
 }

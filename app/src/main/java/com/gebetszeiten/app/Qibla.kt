@@ -28,8 +28,21 @@ object Qibla {
         return 6371.0 * 2 * asin(sqrt(a))
     }
 
+    /** Himmelsrichtungen N/O/S/W in der gewählten Sprache. */
+    fun letters(): List<String> = when (Prefs.lang) {
+        Lang.DE -> listOf("N", "O", "S", "W")
+        Lang.FR -> listOf("N", "E", "S", "O")
+        Lang.TR -> listOf("K", "D", "G", "B")
+        Lang.BS, Lang.SR -> listOf("S", "I", "J", "Z")
+        Lang.SQ -> listOf("V", "L", "J", "P")
+        Lang.RU, Lang.CE -> listOf("С", "В", "Ю", "З")
+        Lang.ZH -> listOf("北", "东", "南", "西")
+        Lang.AR -> listOf("ش", "ق", "ج", "غ")
+        else -> listOf("N", "E", "S", "W")
+    }
+
     fun direction(b: Double): String {
-        val names = listOf("Nord", "Nordost", "Ost", "Südost", "Süd", "Südwest", "West", "Nordwest")
+        val names = t("dirs").split('|')
         return names[(((b + 22.5) % 360) / 45).toInt()]
     }
 }

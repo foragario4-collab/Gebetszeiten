@@ -27,8 +27,8 @@ class AdhanService : Service() {
         fun start(ctx: Context, uri: String, ev: Ev?): Boolean = try {
             val i = Intent(ctx, AdhanService::class.java)
                 .putExtra("uri", uri)
-                .putExtra("title", ev?.let { Notifs.prayerTitle(it) } ?: "Adhan-Test")
-                .putExtra("text", ev?.let { Notifs.prayerText(it) } ?: "Der gewählte Adhan wird abgespielt.")
+                .putExtra("title", ev?.let { Notifs.prayerTitle(it) } ?: t("n_adhan_test"))
+                .putExtra("text", ev?.let { Notifs.prayerText(it) } ?: t("n_adhan_test_text"))
                 .putExtra("kind", ev?.kind?.ordinal ?: -1)
             ctx.startForegroundService(i)
             true
@@ -107,7 +107,7 @@ class AdhanService : Service() {
             .setContentText(text)
             .setContentIntent(open)
             .setCategory(Notification.CATEGORY_ALARM)
-        if (playing) b.addAction(Notification.Action.Builder(null, "Adhan stoppen", stopPi).build())
+        if (playing) b.addAction(Notification.Action.Builder(null, t("n_stop_adhan"), stopPi).build())
         return b.build()
     }
 

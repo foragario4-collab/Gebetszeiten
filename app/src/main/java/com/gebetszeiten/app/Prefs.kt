@@ -24,6 +24,7 @@ object Prefs {
         if (!::store.isInitialized) {
             store = ctx.applicationContext.getSharedPreferences("einstellungen", Context.MODE_PRIVATE)
         }
+        I18n.init(ctx)
     }
 
     private fun edit(block: SharedPreferences.Editor.() -> Unit) {
@@ -32,6 +33,13 @@ object Prefs {
         e.apply()
         version.intValue = version.intValue + 1
     }
+
+    var lang: Lang
+        get() = Lang.of(sp.getString("lang", Lang.device().code)!!)
+        set(v) = edit { putString("lang", v.code) }
+    var setupDone: Boolean
+        get() = sp.getBoolean("setupDone", false)
+        set(v) = edit { putBoolean("setupDone", v) }
 
     var lat: Double
         get() = sp.getString("lat", "48.2082")!!.toDouble()
@@ -47,7 +55,7 @@ object Prefs {
         set(v) = edit { putBoolean("autoLoc", v) }
 
     var method: String
-        get() = sp.getString("method", "mwl")!!
+        get() = sp.getString("method", "isna")!!
         set(v) = edit { putString("method", v) }
     var customFajr: Float
         get() = sp.getFloat("customFajr", 18f)
@@ -136,6 +144,15 @@ object Prefs {
         set(v) {
             store.edit().putString("radarAlertKey", v).apply()
         }
+
+    /** 0 = Auto, 1 = zu Fuß */
+    var travelMode: Int
+        get() = sp.getInt("travelMode", 0)
+        set(v) = edit { putInt("travelMode", v) }
+    /** 0 = nach Nähe, 1 = nach Iqamah */
+    var sortMode: Int
+        get() = sp.getInt("sortMode", 0)
+        set(v) = edit { putInt("sortMode", v) }
 
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)

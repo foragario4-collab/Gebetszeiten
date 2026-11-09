@@ -36,6 +36,9 @@ object Scheduler {
                 !Prefs.live -> null
                 ev.kind == Kind.MIDNIGHT ->
                     evs.subList(0, idx).lastOrNull { it.kind == Kind.ISHA }?.at
+                // Nach Fajr: Countdown bis Sonnenaufgang (Ende der Fajr-Zeit)
+                ev.kind == Kind.SUNRISE ->
+                    evs.subList(0, idx).lastOrNull { it.kind == Kind.FAJR }?.at
                 ev.kind == Kind.FAJR ->
                     evs.subList(0, idx).lastOrNull { it.kind == Kind.MIDNIGHT }?.at
                         ?: (ev.at - Prefs.liveMin * 60_000L)

@@ -3,6 +3,10 @@
 Islamische Gebetszeiten-App für Android (läuft auch auf GrapheneOS ohne Google-Dienste).
 
 ## Funktionen
+- Tabs: Heute · Qibla · Karte; Einstellungen oben rechts in „Heute“; Tage mit Pfeilen wechseln
+- Karte: Fahr-/Gehzeit, Ankunft vor/nach Iqamah, Sortierung nach Nähe oder Iqamah
+- 11 Sprachen: Deutsch, English, Türkçe, Bosanski, Srpski, Shqip, Français, Русский, Нохчийн, 中文, العربية (mit Rechts-nach-links)
+- Einrichtung beim ersten Start (Sprache, Standort, Berechnung – Standard ISNA, Mitteilungen)
 - Gebetszeiten offline berechnet (Muslim World League, Diyanet, ISNA, Ägypten, Umm al-Qura, Karachi, Golf, Frankreich, eigene Winkel)
 - Asr Standard / Hanafi, Regel für hohe Breitengrade
 - Islamische Mitternacht und letztes Drittel der Nacht

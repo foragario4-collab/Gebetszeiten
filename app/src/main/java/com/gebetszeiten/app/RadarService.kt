@@ -121,9 +121,9 @@ class RadarService : Service(), LocationListener {
 
     private fun build(near: Pair<Mosque, Float>?): Notification {
         val next = nextPrayer()
-        val title = if (near != null) "${near.first.name} · ${Mosques.fmtDist(near.second)}" else "Moschee-Radar aktiv"
+        val title = if (near != null) "${near.first.name} · ${Mosques.fmtDist(near.second)}" else t("n_radar_active")
         val iq = near?.first?.iqamah?.get(next.kind.name)
-        val text = "${next.title} um ${Fmt.time(next.at)}" + (if (iq != null) " · Iqamah $iq" else "")
+        val text = t("n_at", next.title, Fmt.time(next.at)) + (if (iq != null) " · " + t("n_iq", iq) else "")
         val stopPi = PendingIntent.getService(
             this, 9,
             Intent(this, RadarService::class.java).setAction(ACTION_STOP),
@@ -139,7 +139,7 @@ class RadarService : Service(), LocationListener {
             .setColor(0xFF0B6E5F.toInt())
             .setContentTitle(title)
             .setContentText(text)
-            .setSubText("Nächste Moschee")
+            .setSubText(t("n_nearest"))
             .setContentIntent(Notifs.openApp(this))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -149,7 +149,7 @@ class RadarService : Service(), LocationListener {
             .setShowWhen(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_NAVIGATION)
-            .addAction(Notification.Action.Builder(null, "Radar aus", stopPi).build())
+            .addAction(Notification.Action.Builder(null, t("n_radar_off"), stopPi).build())
             .addExtras(extras)
         val chip = Notifs.chipText(next, next.at - now)
         Notifs.applyLiveStyle(b, pct, chip)
@@ -171,9 +171,9 @@ class RadarService : Service(), LocationListener {
         val n = Notification.Builder(this, Notifs.CH_REMIND)
             .setSmallIcon(R.drawable.ic_notif)
             .setColor(0xFF0B6E5F.toInt())
-            .setContentTitle("${m.name} · ${Mosques.fmtDist(d)} entfernt")
+            .setContentTitle(t("n_away", m.name, Mosques.fmtDist(d)))
             .setContentText(
-                "${next.title} in $mins Min (${Fmt.time(next.at)})" + (if (iq != null) " · Iqamah $iq" else "")
+                t("n_in_min_at", next.title, mins, Fmt.time(next.at)) + (if (iq != null) " · " + t("n_iq", iq) else "")
             )
             .setContentIntent(Notifs.openApp(this))
             .setAutoCancel(true)

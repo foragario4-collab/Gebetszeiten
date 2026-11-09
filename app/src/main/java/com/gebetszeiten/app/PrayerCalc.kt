@@ -23,7 +23,9 @@ object PrayerCalc {
         val fajr: Double,
         val isha: Double,
         val ishaMinutes: Int = 0
-    )
+    ) {
+        val label: String get() = t("m_$id")
+    }
 
     val methods = listOf(
         Method("mwl", "Muslim World League", 18.0, 17.0),

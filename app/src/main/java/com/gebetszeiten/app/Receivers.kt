@@ -13,7 +13,7 @@ class AlarmReceiver : BroadcastReceiver() {
             Scheduler.ACTION_FIRE -> Scheduler.handle(ctx)
             Notifs.ACTION_MOSQUE -> Notifs.mosqueReminder(
                 ctx,
-                intent.getStringExtra("title") ?: "Gebet",
+                intent.getStringExtra("title") ?: t("prayer"),
                 intent.getStringExtra("text") ?: ""
             )
             Notifs.ACTION_DONE -> {
@@ -29,5 +29,9 @@ class BootReceiver : BroadcastReceiver() {
         Prefs.init(ctx)
         Notifs.channels(ctx)
         Scheduler.reschedule(ctx)
+        // Moschee-Radar nach Neustart wieder aufnehmen (falls Android es erlaubt)
+        if (Prefs.radar && hasLocPermission(ctx)) {
+            if (!RadarService.start(ctx)) Prefs.radar = false
+        }
     }
 }

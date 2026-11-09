@@ -1,3 +1,5 @@
 <resources>
     <color name="bg">#000000</color>
+    <color name="w_text">#FFFFFF</color>
+    <color name="w_sub">#AEAEB2</color>
 </resources>
