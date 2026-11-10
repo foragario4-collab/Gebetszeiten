@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        Scheduler.showCurrentLive(this)
         Scheduler.schedule(this)
         Widgets.updateAll(this)
     }

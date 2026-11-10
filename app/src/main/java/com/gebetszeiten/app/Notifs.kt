@@ -179,6 +179,7 @@ object Notifs {
             Kind.DHUHR -> if (ev.isJumuah) t("c_JUMUAH") else t("c_DHUHR")
             else -> ev.kind.short
         }
+        if (Prefs.chipMode == 1) return "$name ${Fmt.time(ev.at)}"
         val mins = ((msLeft + 59_999L) / 60_000L).coerceAtLeast(0)
         val t = if (mins >= 60) "${mins / 60}:${"%02d".format(mins % 60)}" else "${mins}m"
         return "$name $t"

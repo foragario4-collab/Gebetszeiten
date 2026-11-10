@@ -159,6 +159,15 @@ object Prefs {
         get() = sp.getInt("compassStyle", 0)
         set(v) = edit { putInt("compassStyle", v) }
 
+    /** Live-Anzeige oben dauerhaft (bis zum nächsten Gebet), unabhängig vom Radar */
+    var liveAlways: Boolean
+        get() = sp.getBoolean("liveAlways", true)
+        set(v) = edit { putBoolean("liveAlways", v) }
+    /** 0 = Restzeit (1:12), 1 = Uhrzeit (14:01) */
+    var chipMode: Int
+        get() = sp.getInt("chipMode", 0)
+        set(v) = edit { putInt("chipMode", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

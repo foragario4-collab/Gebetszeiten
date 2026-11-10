@@ -751,23 +751,77 @@ private fun ManualMosqueDialog(pos: Pair<Double, Double>?, onClose: () -> Unit, 
 private fun IqamahDialog(m: Mosque, onClose: () -> Unit, onSave: (Map<String, String>) -> Unit) {
     val p = LocalPal.current
     val keys = listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA", "JUMUAH").map { it to t("k_$it") }
-    val values = remember(m.id) { keys.map { (k, _) -> mutableStateOf(m.iqamah[k] ?: "") } }
-    val valid = values.all { it.value.isBlank() || it.value.trim().matches(Regex("\\d{1,2}[:.]\\d{2}")) }
+    // intern nur Ziffern („0600“), angezeigt als „06:00“
+    val values = remember(m.id) { keys.map { (k, _) -> mutableStateOf((m.iqamah[k] ?: "").filter { it.isDigit() }) } }
+    val valid = values.all { v -> v.value.isEmpty() || (v.value.length == 4 && v.value.substring(2).toInt() < 60 && v.value.substring(0, 2).toInt() < 24) }
     FullSheet(t("iq_times"), valid, onClose, onSave = {
         val out = LinkedHashMap<String, String>()
         keys.forEachIndexed { i, (k, _) ->
-            val v = values[i].value.trim().replace('.', ':')
-            if (v.isNotBlank()) {
-                val parts = v.split(":")
-                out[k] = "%02d:%s".format(parts[0].toInt(), parts[1])
-            }
+            val d = values[i].value
+            if (d.length == 4) out[k] = d.substring(0, 2) + ":" + d.substring(2)
         }
         onSave(out)
     }) {
         Txt(m.name, 16, FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
+        Txt(t("time_hint"), 13, color = p.sub, modifier = Modifier.padding(start = 4.dp))
         keys.forEachIndexed { i, (_, label) ->
-            Field("$label (${t("eg_time")})", values[i].value, KeyboardType.Number) { values[i].value = it }
+            TimeField(label, values[i].value) { values[i].value = it }
         }
         Txt(t("empty_dash"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp))
+    }
+}
+
+/**
+ * Uhrzeit-Eingabe nur mit Ziffern: Doppelpunkt kommt von selbst.
+ * Erste Ziffer 3–9 → wird zu „0X:“, danach direkt die Minuten.
+ */
+@Composable
+private fun TimeField(label: String, digits: String, onChange: (String) -> Unit) {
+    val p = LocalPal.current
+    fun clean(input: String): String {
+        val raw = input.filter { it.isDigit() }
+        var d = ""
+        for (ch in raw) {
+            val n = ch - '0'
+            d = when {
+                d.isEmpty() && n >= 3 -> "0$n"
+                d.length == 1 && (d + ch).toInt() > 23 -> "0$d$ch"
+                d.length == 2 && n > 5 -> d
+                d.length >= 4 -> d
+                else -> d + ch
+            }
+        }
+        return d.take(4)
+    }
+    val shown = when {
+        digits.length <= 1 -> digits
+        digits.length == 2 -> "$digits:"
+        else -> digits.substring(0, 2) + ":" + digits.substring(2)
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.card).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Txt(label, 16, modifier = Modifier.weight(1f))
+        Box(contentAlignment = Alignment.CenterEnd) {
+            if (digits.isEmpty()) Txt("––:––", 22, FontWeight.SemiBold, p.sub)
+            BasicTextField(
+                value = androidx.compose.ui.text.input.TextFieldValue(shown, androidx.compose.ui.text.TextRange(shown.length)),
+                onValueChange = { tv ->
+                    // Löschen: wurde nur der Doppelpunkt entfernt, auch die Ziffer davor löschen
+                    val newDigits = tv.text.filter { it.isDigit() }
+                    val next = if (tv.text.length < shown.length && newDigits == digits) digits.dropLast(1) else clean(newDigits)
+                    onChange(next)
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = p.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                ),
+                cursorBrush = SolidColor(Color(0xFF007AFF)),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                modifier = Modifier.width(110.dp)
+            )
+        }
     }
 }

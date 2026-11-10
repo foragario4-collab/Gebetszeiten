@@ -42,6 +42,9 @@ object Scheduler {
                 ev.kind == Kind.FAJR ->
                     evs.subList(0, idx).lastOrNull { it.kind == Kind.MIDNIGHT }?.at
                         ?: (ev.at - Prefs.liveMin * 60_000L)
+                // „Immer anzeigen“: ab dem vorherigen Gebet durchgehend
+                ev.kind.prayer && Prefs.liveAlways ->
+                    evs.subList(0, idx).lastOrNull { it.kind.prayer || it.kind == Kind.SUNRISE }?.at
                 ev.kind.prayer -> ev.at - Prefs.liveMin * 60_000L
                 else -> null
             }
@@ -49,7 +52,7 @@ object Scheduler {
                 var t = maxOf(start, prev.at)
                 while (t < ev.at) {
                     out.add(Action(t, Act.LIVE, ev, start))
-                    t += if (ev.at - t > 3_600_000L) 300_000L else 60_000L
+                    t += if (ev.at - t > 3_600_000L) 900_000L else if (ev.at - t > 1_800_000L) 300_000L else 60_000L
                 }
             }
         }
@@ -66,8 +69,18 @@ object Scheduler {
     /** Nach Einstellungsänderungen: nichts Vergangenes nachholen, neu planen. */
     fun reschedule(ctx: Context) {
         Prefs.lastHandled = System.currentTimeMillis()
+        if (!Prefs.live) ctx.getSystemService(android.app.NotificationManager::class.java)?.cancel(Notifs.LIVE_ID)
+        showCurrentLive(ctx)
         schedule(ctx)
         Widgets.updateAll(ctx)
+    }
+
+    /** Live-Anzeige sofort zeigen (z. B. beim Öffnen der App), nicht erst beim nächsten Wecker. */
+    fun showCurrentLive(ctx: Context) {
+        if (!Prefs.live) return
+        val now = System.currentTimeMillis()
+        val a = actions(now).lastOrNull { it.act == Act.LIVE && it.at <= now && (it.ev?.at ?: 0L) > now } ?: return
+        Notifs.live(ctx, a.ev!!, a.start)
     }
 
     fun schedule(ctx: Context) {

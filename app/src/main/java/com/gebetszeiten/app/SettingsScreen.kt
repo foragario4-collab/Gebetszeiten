@@ -244,8 +244,16 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
         // ---------- Live ----------
         Section(t("sec_live"), footer = t("live_footer")) {
             ToggleRow(t("sec_live"), Prefs.live, first = true) { Prefs.live = it; changed() }
+            ToggleRow(t("live_always"), Prefs.liveAlways, sub = t("live_always_sub")) { Prefs.liveAlways = it; changed() }
+            val cm = listOf(t("chip_remaining"), t("chip_clock"))
+            cm.forEachIndexed { i, label ->
+                CheckRow(label, Prefs.chipMode == i, sub = if (i == 0) t("chip_mode") else null) {
+                    Prefs.chipMode = i
+                    changed()
+                }
+            }
             val lm = listOf(15, 30, 45, 60, 90, 120)
-            ValueRow(t("live_start"), t("min_short", Prefs.liveMin)) {
+            if (!Prefs.liveAlways) ValueRow(t("live_start"), t("min_short", Prefs.liveMin)) {
                 choice = Choice(t("live_start"), lm.map { t("minutes", it) }, lm.indexOf(Prefs.liveMin)) { i ->
                     Prefs.liveMin = lm[i]
                     changed()

@@ -155,6 +155,14 @@ fun BoxScope.MosqueBottomSheet(
     val evs = remember(now / 60_000L) { Times.around(now) }
     val sortMode = Prefs.sortMode
     val mode = Prefs.travelMode
+    // Echte Routenzeiten (OpenStreetMap) für die nächsten Moscheen holen
+    var routeSec by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    LaunchedEffect(mosques.size, (lat * 500).toInt(), (lng * 500).toInt(), mode) {
+        val near = mosques.sortedBy { Mosques.distance(lat, lng, it.lat, it.lng) }.take(40)
+        routeSec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            Routing.durations(lat, lng, near, mode)
+        }
+    }
     val sorted = remember(mosques, lat, lng, sortMode, now / 60_000L) {
         val byDist = mosques.map { it to Mosques.distance(lat, lng, it.lat, it.lng) }.sortedBy { it.second }.take(80)
         if (sortMode == 1) byDist.sortedWith(compareBy({ nextIqamah(it.first, evs, now)?.third ?: Long.MAX_VALUE }, { it.second }))
@@ -258,7 +266,7 @@ fun BoxScope.MosqueBottomSheet(
                 items(sorted, key = { it.first.id }) { (m, d) ->
                     val nx = if (hasTimes(m)) nextFor(m, evs, now) else null
                     val niq = nextIqamah(m, evs, now)
-                    val travel = travelMin(d, mode)
+                    val travel = Routing.minutes(routeSec[m.id], d, mode)
                     val arr = now + travel * 60_000L
                     Column(
                         Modifier
@@ -288,8 +296,6 @@ fun BoxScope.MosqueBottomSheet(
                             } else {
                                 Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
                             }
-                            // Ankunft immer in eigener Zeile – wird so nie abgeschnitten
-                            Txt(t("arrival", Fmt.time(arr)), 13, FontWeight.Medium, p.text, maxLines = 1)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -299,6 +305,7 @@ fun BoxScope.MosqueBottomSheet(
                             Txt(Mosques.fmtDist(d), 12, color = p.sub)
                         }
                     }
+                    Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) { ArrivalBar(arr, niq?.third) }
                     }
                 }
             }
@@ -323,6 +330,7 @@ private fun MosqueDetail(
     val main = remember { Handler(Looper.getMainLooper()) }
 
     var finding by remember(m.id) { mutableStateOf(false) }
+    var showLink by remember(m.id) { mutableStateOf(false) }
 
     fun findTimes() {
         if (finding) return
@@ -376,15 +384,22 @@ private fun MosqueDetail(
     ) {
         if (hasTimes(m)) {
             val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
-            val tr = travelMin(dist, Prefs.travelMode)
+            var sec by remember(m.id, Prefs.travelMode) { mutableStateOf<Int?>(null) }
+            LaunchedEffect(m.id, Prefs.travelMode) {
+                sec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    Routing.durations(Prefs.lat, Prefs.lng, listOf(m), Prefs.travelMode)[m.id]
+                }
+            }
+            val tr = Routing.minutes(sec, dist, Prefs.travelMode)
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(p.bg).padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 TravelIcon(Prefs.travelMode, p.text, p.bg, 18.dp)
-                Txt(t("travel_min", tr) + " · " + t("arrival", Fmt.time(now + tr * 60_000L)), 14, FontWeight.SemiBold)
+                Txt(t("travel_min", tr) + " · " + Mosques.fmtDist(dist), 14, FontWeight.SemiBold)
             }
+            ArrivalBar(now + tr * 60_000L, nextIqamah(m, evs, now)?.third)
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
                 Txt(t("prayer"), 12, FontWeight.SemiBold, p.sub, Modifier.weight(1f))
                 Txt(t("adhan"), 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
@@ -423,7 +438,7 @@ private fun MosqueDetail(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Txt("🕓", 26)
+                ClockIcon(p.sub)
                 Txt(t("no_times"), 16, FontWeight.SemiBold)
                 Txt(
                     t("no_times_sub"),
@@ -458,7 +473,22 @@ private fun MosqueDetail(
                 Txt(if (finding) t("finding") else t("find_times"), 15, FontWeight.SemiBold, Color.White, maxLines = 1)
             }
             Txt(t("find_times_sub"), 12, color = p.sub, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-            Txt(t("or") + " · " + t("link_label"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+        }
+        // Link-Feld: bei Moscheen ohne Zeiten immer, sonst über den Knopf „Link hinzufügen oder ändern“
+        if (hasTimes(m) && !showLink) {
+            Row(
+                Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(p.fill)
+                    .tap { showLink = true },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LinkIcon(Color(0xFF007AFF))
+                Spacer(Modifier.width(8.dp))
+                Txt(t("change_link"), 15, FontWeight.SemiBold, Color(0xFF007AFF), maxLines = 1)
+            }
+        }
+        if (!hasTimes(m) || showLink) {
+            Txt((if (hasTimes(m)) "" else t("or") + " · ") + t("link_label"), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg)
                     .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
@@ -556,5 +586,62 @@ private fun ModeSegmented(selected: Int, onSelect: (Int) -> Unit) {
                 contentAlignment = Alignment.Center
             ) { TravelIcon(i, p.text, if (i == selected) p.seg else p.fill, 20.dp) }
         }
+    }
+}
+
+
+/** Ankunft grün (vor/pünktlich zur Iqamah) oder rot (danach) mit der Differenz rechts. */
+@Composable
+internal fun ArrivalBar(arrMs: Long, iqMs: Long?) {
+    val p = LocalPal.current
+    val arrMin = Math.ceil(arrMs / 60_000.0).toLong()
+    val green = Color(0xFF248A3D)
+    val red = Color(0xFFD70015)
+    val (c, diffText) = if (iqMs == null) {
+        p.sub to ""
+    } else {
+        val diff = iqMs / 60_000L - arrMin
+        when {
+            diff > 0 -> green to t("diff_before", diff)
+            diff == 0L -> green to t("diff_ontime")
+            else -> red to t("diff_after", -diff)
+        }
+    }
+    val bg = when (c) {
+        green -> Color(0x2234C759)
+        red -> Color(0x1AFF3B30)
+        else -> p.fill
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(bg).padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(c))
+        Spacer(Modifier.width(8.dp))
+        Txt(t("arrival", Fmt.time(arrMin * 60_000L)), 14, FontWeight.SemiBold, c, Modifier.weight(1f), maxLines = 1)
+        if (diffText.isNotEmpty()) Txt(diffText, 14, FontWeight.Bold, c, maxLines = 1)
+    }
+}
+
+
+@Composable
+private fun LinkIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val st = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.11f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        rotate(-45f) {
+            drawRoundRect(c, androidx.compose.ui.geometry.Offset(w * 0.08f, w * 0.34f), androidx.compose.ui.geometry.Size(w * 0.5f, w * 0.32f), androidx.compose.ui.geometry.CornerRadius(w * 0.16f), style = st)
+            drawRoundRect(c, androidx.compose.ui.geometry.Offset(w * 0.42f, w * 0.34f), androidx.compose.ui.geometry.Size(w * 0.5f, w * 0.32f), androidx.compose.ui.geometry.CornerRadius(w * 0.16f), style = st)
+        }
+    }
+}
+
+@Composable
+private fun ClockIcon(c: Color) {
+    androidx.compose.foundation.Canvas(Modifier.size(30.dp)) {
+        val w = size.width
+        drawCircle(c, w * 0.42f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.07f))
+        drawLine(c, center, androidx.compose.ui.geometry.Offset(center.x, w * 0.24f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(c, center, androidx.compose.ui.geometry.Offset(w * 0.68f, w * 0.6f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
     }
 }
