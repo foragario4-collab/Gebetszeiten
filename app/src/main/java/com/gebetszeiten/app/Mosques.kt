@@ -128,8 +128,10 @@ object Mosques {
             }
         } catch (e: Exception) {
         }
-        own = list
+        val unique = list.distinctBy { it.id }.distinctBy { it.url ?: it.id }
+        own = unique.toMutableList()
         overrides = ov
+        if (unique.size != list.size) saveOwn(ctx)
     }
 
     private fun saveOwn(ctx: Context) {
@@ -165,7 +167,7 @@ object Mosques {
         val fromOsm = (osm ?: emptyList()).filter { o ->
             better.none { distance(it.lat, it.lng, o.lat, o.lng) < 80f }
         }.map { o -> ov[o.id]?.let { o.copy(iqamah = it) } ?: o }
-        return better + fromOsm
+        return (better + fromOsm).distinctBy { it.id }
     }
 
     // ---------------- Mawaqit (öffentliche Suche, liefert die heutigen Zeiten mit) ----------------
@@ -829,16 +831,27 @@ object Mosques {
      * Vorinstallierte Wiener Moscheen (assets/seed_mosques.json) einmalig übernehmen:
      * Seite laden (Position/Zeiten), sonst Adresse suchen. Läuft im Hintergrund.
      */
+    @Volatile
+    private var seeding = false
+
     fun importSeeds(ctx: Context, cb: () -> Unit) {
+        synchronized(this) {
+            if (seeding) return
+            seeding = true
+        }
         val app = ctx.applicationContext
         val sp = app.getSharedPreferences("einstellungen", Context.MODE_PRIVATE)
         val json = try {
             JSONObject(app.assets.open("seed_mosques.json").bufferedReader().use { it.readText() })
         } catch (e: Exception) {
+            seeding = false
             return
         }
         val ver = json.optInt("version", 1)
-        if (sp.getInt("seedVersion", 0) >= ver) return
+        if (sp.getInt("seedVersion", 0) >= ver) {
+            seeding = false
+            return
+        }
         list(app)
         val main = Handler(Looper.getMainLooper())
         Thread {
@@ -847,7 +860,20 @@ object Mosques {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val url = o.getString("url")
-                if ((own ?: emptyList<Mosque>()).any { it.url == url }) continue
+                val seedId = "seed-" + url.substringAfterLast('/')
+                val existing = (own ?: emptyList<Mosque>()).indexOfFirst { it.url == url || it.id == seedId }
+                if (existing >= 0) {
+                    // Vorhandene Moschee: Name/Adresse aus der neuen Liste übernehmen
+                    val o2 = own ?: continue
+                    val cur = o2[existing]
+                    val nn = o.optString("name").ifBlank { cur.name }
+                    val na = o.optString("address").ifBlank { cur.address }
+                    if (nn != cur.name || na != cur.address) {
+                        o2[existing] = cur.copy(name = nn, address = na)
+                        added++
+                    }
+                    continue
+                }
                 val name = o.optString("name")
                 val addr = o.optString("address")
                 val d = try {
@@ -875,6 +901,7 @@ object Mosques {
             }
             saveOwn(app)
             sp.edit().putInt("seedVersion", ver).apply()
+            seeding = false
             if (added > 0) main.post { cb() }
         }.start()
     }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.gebetszeiten.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "3.10"
+        versionCode = 20
+        versionName = "3.10.2"
     }
 
     signingConfigs {

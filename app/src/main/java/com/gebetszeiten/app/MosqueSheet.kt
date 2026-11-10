@@ -168,7 +168,8 @@ fun BoxScope.MosqueBottomSheet(
         }
     }
     val sorted = remember(mosques, lat, lng, sortMode, now / 60_000L) {
-        val byDist = mosques.map { it to Mosques.distance(lat, lng, it.lat, it.lng) }.sortedBy { it.second }.take(80)
+        val byDist = mosques.distinctBy { it.id }
+            .map { it to Mosques.distance(lat, lng, it.lat, it.lng) }.sortedBy { it.second }.take(80)
         if (sortMode == 1) byDist.sortedWith(compareBy({ nextIqamah(it.first, evs, now)?.third ?: Long.MAX_VALUE }, { it.second }))
         else byDist
     }
