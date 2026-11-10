@@ -236,8 +236,12 @@ fun MapScreen(v: Int) {
         }
     }
 
+    var locating by remember { mutableStateOf(false) }
+
     fun locate(animate: Boolean) {
+        locating = true
         Loc.fetch(ctx) { loc ->
+            locating = false
             if (loc != null) {
                 myLat = loc.latitude
                 myLng = loc.longitude
@@ -349,6 +353,35 @@ fun MapScreen(v: Int) {
                     }
                 }
             )
+
+            // Lade-Hinweis, damit man sieht, dass die App arbeitet und nicht hängt
+            val busyText = when {
+                locating -> t("locating_map")
+                Mosques.loading || Mosques.mwLoading -> t("loading_mosques")
+                else -> null
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = busyText != null,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp),
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
+                exit = androidx.compose.animation.fadeOut()
+            ) {
+                Row(
+                    Modifier
+                        .shadow(6.dp, RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xF21C1C1E))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                    Box(Modifier.size(8.dp))
+                    Txt(busyText ?: "", 13, FontWeight.SemiBold, Color.White, maxLines = 1)
+                }
+            }
 
             // Oben links: Radar
             Row(

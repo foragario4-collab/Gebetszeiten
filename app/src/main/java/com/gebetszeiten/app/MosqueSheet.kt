@@ -76,7 +76,11 @@ internal fun travelMin(distM: Float, mode: Int): Int =
     else ((distM / 1000f * 1.25f) / 4.8f * 60f).roundToInt().coerceAtLeast(1)
 
 /** Nächste noch kommende Iqamah einer Moschee: (Gebet, Adhan-Text, Iqamah-Zeitpunkt). */
-internal fun nextIqamah(m: Mosque, evs: List<Ev>, now: Long): Triple<Ev, String, Long>? {
+/**
+ * Relevante Iqamah: die erste, die bei Ankunft höchstens 20 Min vorbei ist.
+ * Wer später ankommt, verpasst das Gebet wahrscheinlich – dann zählt das nächste.
+ */
+internal fun nextIqamah(m: Mosque, evs: List<Ev>, now: Long, arrival: Long = now): Triple<Ev, String, Long>? {
     if (m.iqamah.isEmpty()) return null
     for (e in evs) {
         if (!e.kind.prayer || e.at < now - 3 * 3600_000L) continue
@@ -88,7 +92,7 @@ internal fun nextIqamah(m: Mosque, evs: List<Ev>, now: Long): Triple<Ev, String,
         } catch (ex: Exception) {
             continue
         }
-        if (ms > now) return Triple(e, m.adhan[key] ?: Fmt.time(e.at), ms)
+        if (ms >= arrival - 20 * 60_000L && ms > now - 30 * 60_000L) return Triple(e, m.adhan[key] ?: Fmt.time(e.at), ms)
     }
     return null
 }
@@ -265,9 +269,9 @@ fun BoxScope.MosqueBottomSheet(
             ) {
                 items(sorted, key = { it.first.id }) { (m, d) ->
                     val nx = if (hasTimes(m)) nextFor(m, evs, now) else null
-                    val niq = nextIqamah(m, evs, now)
                     val travel = Routing.minutes(routeSec[m.id], d, mode)
                     val arr = now + travel * 60_000L
+                    val niq = nextIqamah(m, evs, now, arr)
                     Column(
                         Modifier
                             .fillMaxWidth()
@@ -310,14 +314,14 @@ fun BoxScope.MosqueBottomSheet(
                 }
             }
         } else if (selected != null) {
-            MosqueDetail(selected, evs, now, onEdit, onRemove, onUpdated)
+            MosqueDetail(selected, evs, now, lat, lng, routeSec[selected.id], onEdit, onRemove, onUpdated)
         }
     }
 }
 
 @Composable
 private fun MosqueDetail(
-    m: Mosque, evs: List<Ev>, now: Long,
+    m: Mosque, evs: List<Ev>, now: Long, myLat: Double, myLng: Double, listSec: Int?,
     onEdit: (Mosque) -> Unit, onRemove: (Mosque) -> Unit, onUpdated: (Mosque) -> Unit
 ) {
     val p = LocalPal.current
@@ -383,11 +387,14 @@ private fun MosqueDetail(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (hasTimes(m)) {
-            val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
-            var sec by remember(m.id, Prefs.travelMode) { mutableStateOf<Int?>(null) }
+            // dieselbe (aktuelle) Position wie in der Liste – sonst passen Entfernung und Zeit nicht zusammen
+            val dist = Mosques.distance(myLat, myLng, m.lat, m.lng)
+            var sec by remember(m.id, Prefs.travelMode) { mutableStateOf(listSec) }
             LaunchedEffect(m.id, Prefs.travelMode) {
-                sec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    Routing.durations(Prefs.lat, Prefs.lng, listOf(m), Prefs.travelMode)[m.id]
+                if (sec == null) {
+                    sec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        Routing.durations(myLat, myLng, listOf(m), Prefs.travelMode)[m.id]
+                    }
                 }
             }
             val tr = Routing.minutes(sec, dist, Prefs.travelMode)
@@ -399,7 +406,7 @@ private fun MosqueDetail(
                 TravelIcon(Prefs.travelMode, p.text, p.bg, 18.dp)
                 Txt(t("travel_min", tr) + " · " + Mosques.fmtDist(dist), 14, FontWeight.SemiBold)
             }
-            ArrivalBar(now + tr * 60_000L, nextIqamah(m, evs, now)?.third)
+            ArrivalBar(now + tr * 60_000L, nextIqamah(m, evs, now, now + tr * 60_000L)?.third)
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
                 Txt(t("prayer"), 12, FontWeight.SemiBold, p.sub, Modifier.weight(1f))
                 Txt(t("adhan"), 12, FontWeight.SemiBold, p.sub, Modifier.width(70.dp), align = TextAlign.End)
@@ -602,9 +609,9 @@ internal fun ArrivalBar(arrMs: Long, iqMs: Long?) {
     } else {
         val diff = iqMs / 60_000L - arrMin
         when {
-            diff > 0 -> green to t("diff_before", diff)
+            diff > 0 -> green to t("diff_before", Fmt.duration(diff * 60_000L))
             diff == 0L -> green to t("diff_ontime")
-            else -> red to t("diff_after", -diff)
+            else -> red to t("diff_after", Fmt.duration(-diff * 60_000L))
         }
     }
     val bg = when (c) {
