@@ -138,7 +138,7 @@ class RadarService : Service(), LocationListener {
         val pct = ((now - prev) * 100 / (next.at - prev).coerceAtLeast(1)).toInt()
         val minsLeft = ((next.at - now + 59_999L) / 60_000L).coerceAtLeast(0)
         val b = Notification.Builder(this, Notifs.CH_LIVE)
-            .setSmallIcon(R.drawable.ic_notif)
+            .setSmallIcon(R.drawable.ic_live_dot)
             .setColor(0xFF0B6E5F.toInt())
             .setContentTitle(title)
             .setContentText(text)

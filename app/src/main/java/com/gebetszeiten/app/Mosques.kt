@@ -167,7 +167,18 @@ object Mosques {
         val fromOsm = (osm ?: emptyList()).filter { o ->
             better.none { distance(it.lat, it.lng, o.lat, o.lng) < 80f }
         }.map { o -> ov[o.id]?.let { o.copy(iqamah = it) } ?: o }
-        return (better + fromOsm).distinctBy { it.id }
+        val hidden = Prefs.hiddenIds
+        return (better + fromOsm).distinctBy { it.id }.filter { it.id !in hidden }
+    }
+
+    /** Position einer Moschee korrigieren (für fremde Einträge wird eine eigene Kopie angelegt). */
+    fun move(ctx: Context, m: Mosque, lat: Double, lng: Double): Mosque {
+        list(ctx)
+        val moved = if (m.custom) m.copy(lat = lat, lng = lng)
+        else m.copy(id = "own-" + m.id, lat = lat, lng = lng, custom = true)
+        if (!m.custom) Prefs.hide(m.id)
+        addOwn(ctx, moved)
+        return moved
     }
 
     // ---------------- Mawaqit (öffentliche Suche, liefert die heutigen Zeiten mit) ----------------

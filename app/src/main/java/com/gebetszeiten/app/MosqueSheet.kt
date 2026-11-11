@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -140,7 +141,9 @@ fun BoxScope.MosqueBottomSheet(
     onClose: () -> Unit,
     onEdit: (Mosque) -> Unit,
     onRemove: (Mosque) -> Unit,
-    onUpdated: (Mosque) -> Unit
+    onUpdated: (Mosque) -> Unit,
+    onHide: (Mosque) -> Unit = {},
+    onReport: (Mosque) -> Unit = {}
 ) {
     val p = LocalPal.current
     val density = LocalDensity.current
@@ -315,7 +318,7 @@ fun BoxScope.MosqueBottomSheet(
                 }
             }
         } else if (selected != null) {
-            MosqueDetail(selected, evs, now, lat, lng, routeSec[selected.id], onEdit, onRemove, onUpdated)
+            MosqueDetail(selected, evs, now, lat, lng, routeSec[selected.id], onEdit, onRemove, onUpdated, onHide, onReport)
         }
     }
 }
@@ -323,7 +326,8 @@ fun BoxScope.MosqueBottomSheet(
 @Composable
 private fun MosqueDetail(
     m: Mosque, evs: List<Ev>, now: Long, myLat: Double, myLng: Double, listSec: Int?,
-    onEdit: (Mosque) -> Unit, onRemove: (Mosque) -> Unit, onUpdated: (Mosque) -> Unit
+    onEdit: (Mosque) -> Unit, onRemove: (Mosque) -> Unit, onUpdated: (Mosque) -> Unit,
+    onHide: (Mosque) -> Unit, onReport: (Mosque) -> Unit
 ) {
     val p = LocalPal.current
     val ctx = LocalContext.current
@@ -336,6 +340,7 @@ private fun MosqueDetail(
 
     var finding by remember(m.id) { mutableStateOf(false) }
     var showLink by remember(m.id) { mutableStateOf(false) }
+    var preview by remember(m.id) { mutableStateOf<Mosques.Draft?>(null) }
 
     fun findTimes() {
         if (finding) return
@@ -374,7 +379,7 @@ private fun MosqueDetail(
                     res == null -> info = t("page_failed") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")
                     res.adhan.isEmpty() && res.iqamah.isEmpty() ->
                         info = t("no_times_found") + " (" + Mosques.lastFetchInfo + ")"
-                    else -> onUpdated(Mosques.attachLink(ctx, m, res))
+                    else -> preview = res
                 }
             }
         }.start()
@@ -387,6 +392,47 @@ private fun MosqueDetail(
             .padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Teilen · Adresse kopieren · Suchen · Route
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val addrText = listOf(m.name, m.address).filter { it.isNotBlank() }.joinToString(", ")
+            ActionTile(Glyph.SHARE, t("share")) {
+                val text = addrText + "\nhttps://www.openstreetmap.org/?mlat=%.5f&mlon=%.5f#map=18/%.5f/%.5f".format(
+                    java.util.Locale.US, m.lat, m.lng, m.lat, m.lng
+                ) + (m.url?.let { "\n$it" } ?: "")
+                try {
+                    ctx.startActivity(
+                        Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), m.name
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (e: Exception) {
+                }
+            }
+            ActionTile(Glyph.COPY, t("copy_address")) {
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText(m.name, addrText))
+                info = null
+                android.widget.Toast.makeText(ctx, t("copied"), android.widget.Toast.LENGTH_SHORT).show()
+            }
+            ActionTile(Glyph.SEARCH, t("search_web")) {
+                try {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(addrText)))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (e: Exception) {
+                }
+            }
+            ActionTile(Glyph.ROUTE, t("route")) {
+                try {
+                    ctx.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("geo:${m.lat},${m.lng}?q=${m.lat},${m.lng}(${Uri.encode(m.name)})"))
+                    )
+                } catch (e: Exception) {
+                    info = t("no_nav")
+                }
+            }
+        }
         if (hasTimes(m)) {
             // dieselbe (aktuelle) Position wie in der Liste – sonst passen Entfernung und Zeit nicht zusammen
             val dist = Mosques.distance(myLat, myLng, m.lat, m.lng)
@@ -521,6 +567,60 @@ private fun MosqueDetail(
                 ) { Txt(if (busy) t("loading") else t("add_link"), 14, FontWeight.SemiBold, Color.White) }
             }
         }
+        if (!hasTimes(m) || showLink) {
+            // Kopierten Link mit einem Tipp übernehmen
+            Row(
+                Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(10.dp)).background(p.fill)
+                    .tap {
+                        val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                        val txt = cm?.primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString()?.trim().orEmpty()
+                        if (txt.isNotBlank()) {
+                            link = txt
+                            loadLink()
+                        }
+                    },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) { Txt(t("paste") + " & " + t("load"), 14, FontWeight.SemiBold, Color(0xFF007AFF)) }
+        }
+        // Vorschau vor dem Speichern
+        preview?.let { d ->
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    GreenCheck()
+                    Txt(t("preview_found", d.name, d.adhan.size, d.iqamah.size), 14, FontWeight.SemiBold)
+                }
+                if (d.iqamah.isNotEmpty() || d.adhan.isNotEmpty()) {
+                    Txt(
+                        listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA", "JUMUAH").mapNotNull { k ->
+                            val a = d.adhan[k]
+                            val i = d.iqamah[k]
+                            if (a == null && i == null) null else t("k_$k") + " " + (a ?: "–") + (if (i != null) " / $i" else "")
+                        }.joinToString(" · "),
+                        12, color = p.sub
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp)).background(p.accent)
+                            .tap {
+                                onUpdated(Mosques.attachLink(ctx, m, d))
+                                preview = null
+                                showLink = false
+                            },
+                        contentAlignment = Alignment.Center
+                    ) { Txt(t("apply"), 15, FontWeight.SemiBold, Color.White) }
+                    Box(
+                        Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp)).background(p.fill)
+                            .tap { preview = null },
+                        contentAlignment = Alignment.Center
+                    ) { Txt(t("discard"), 15, FontWeight.SemiBold, p.text) }
+                }
+            }
+        }
         info?.let { Txt(it, 13, FontWeight.SemiBold, Color(0xFFFF3B30)) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -543,11 +643,12 @@ private fun MosqueDetail(
                 contentAlignment = Alignment.Center
             ) { Txt(if (hasTimes(m)) t("edit_iq") else t("enter_manual"), 15, FontWeight.SemiBold, Color(0xFF007AFF)) }
         }
-        if (m.custom) {
-            Txt(
-                t("remove"), 15, color = Color(0xFFFF3B30),
-                modifier = Modifier.tap { onRemove(m) }.padding(vertical = 8.dp)
-            )
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Txt(t("hide"), 15, color = p.sub, modifier = Modifier.tap { onHide(m) }.padding(vertical = 8.dp))
+            if (m.custom) {
+                Txt(t("remove"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onRemove(m) }.padding(vertical = 8.dp))
+            }
+            Txt(t("report"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onReport(m) }.padding(vertical = 8.dp))
         }
     }
 }
@@ -651,5 +752,20 @@ private fun ClockIcon(c: Color) {
         drawCircle(c, w * 0.42f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.07f))
         drawLine(c, center, androidx.compose.ui.geometry.Offset(center.x, w * 0.24f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         drawLine(c, center, androidx.compose.ui.geometry.Offset(w * 0.68f, w * 0.6f), strokeWidth = w * 0.07f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+
+@Composable
+private fun RowScope.ActionTile(glyph: String, label: String, onClick: () -> Unit) {
+    val p = LocalPal.current
+    Column(
+        Modifier.weight(1f).height(60.dp).clip(RoundedCornerShape(12.dp)).background(p.bg).tap(scale = 0.92f, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        GlyphIcon(glyph, Color(0xFF007AFF), 20.dp)
+        Spacer(Modifier.height(4.dp))
+        Txt(label, 11, FontWeight.SemiBold, Color(0xFF007AFF), maxLines = 1, align = TextAlign.Center)
     }
 }

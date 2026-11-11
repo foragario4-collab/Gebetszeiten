@@ -168,6 +168,15 @@ object Prefs {
         get() = sp.getInt("chipMode", 0)
         set(v) = edit { putInt("chipMode", v) }
 
+    /** Ausgeblendete Moscheen/Orte (IDs) */
+    var hiddenIds: Set<String>
+        get() = sp.getStringSet("hiddenIds", emptySet())?.toSet() ?: emptySet()
+        set(v) = edit { putStringSet("hiddenIds", HashSet(v)) }
+
+    fun hide(id: String) {
+        hiddenIds = hiddenIds + id
+    }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

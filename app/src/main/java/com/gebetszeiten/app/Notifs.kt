@@ -92,7 +92,6 @@ object Notifs {
     /** Zur Gebetszeit: Adhan (wenn gewählt und Datei vorhanden) oder Mitteilung mit Ton. */
     fun prayerAlert(ctx: Context, ev: Ev) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
-        nm.cancel(LIVE_ID)
         nm.cancel(remindId(ev.kind))
         val mode = Prefs.mode(ev.kind)
         val uri = if (ev.kind == Kind.FAJR) (Prefs.fajrAdhanUri ?: Prefs.adhanUri) else Prefs.adhanUri
@@ -185,8 +184,8 @@ object Notifs {
         return "$name $t"
     }
 
-    fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
-        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+    /** Baut die Live-Mitteilung (Countdown + Ladebalken). */
+    fun buildLive(ctx: Context, ev: Ev, prevAt: Long? = null): Notification {
         val now = System.currentTimeMillis()
         val start = prevAt ?: (ev.at - Prefs.liveMin * 60_000L)
         val total = (ev.at - start).coerceAtLeast(1)
@@ -197,7 +196,7 @@ object Notifs {
         val isSun = ev.kind == Kind.SUNRISE
         val col = if (isMid) 0xFF5E5CE6.toInt() else ACCENT
         val b = Notification.Builder(ctx, CH_LIVE)
-            .setSmallIcon(R.drawable.ic_notif)
+            .setSmallIcon(R.drawable.ic_live_dot)
             .setColor(col)
             .setContentTitle(t("n_at", ev.title, Fmt.time(ev.at)))
             .setContentText(if (isMid) t("n_end_isha") else if (isSun) t("end_fajr") else t("n_countdown"))
@@ -215,6 +214,13 @@ object Notifs {
             .addExtras(extras)
         val chip = chipText(ev, ev.at - now)
         applyLiveStyle(b, done, chip, if (isMid) 0xFFA5A5FF.toInt() else if (isSun) 0xFFFFC94D.toInt() else 0xFF4FD6BC.toInt())
-        nm.notify(LIVE_ID, b.build())
+        return b.build()
+    }
+
+    /** Live-Anzeige zeigen: bevorzugt über den Dienst (aktualisiert den Balken laufend). */
+    fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
+        if (!LiveService.start(ctx)) {
+            ctx.getSystemService(NotificationManager::class.java)?.notify(LIVE_ID, buildLive(ctx, ev, prevAt))
+        }
     }
 }

@@ -75,11 +75,15 @@ object Scheduler {
         Widgets.updateAll(ctx)
     }
 
+    /** Die gerade aktive Live-Aktion (welches Gebet, ab wann), oder null. */
+    fun currentLive(now: Long): Action? {
+        if (!Prefs.live) return null
+        return actions(now).lastOrNull { it.act == Act.LIVE && it.at <= now && (it.ev?.at ?: 0L) > now }
+    }
+
     /** Live-Anzeige sofort zeigen (z. B. beim Öffnen der App), nicht erst beim nächsten Wecker. */
     fun showCurrentLive(ctx: Context) {
-        if (!Prefs.live) return
-        val now = System.currentTimeMillis()
-        val a = actions(now).lastOrNull { it.act == Act.LIVE && it.at <= now && (it.ev?.at ?: 0L) > now } ?: return
+        val a = currentLive(System.currentTimeMillis()) ?: return
         Notifs.live(ctx, a.ev!!, a.start)
     }
 

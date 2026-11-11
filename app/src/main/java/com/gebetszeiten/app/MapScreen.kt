@@ -209,6 +209,8 @@ fun MapScreen(v: Int) {
     var manual by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var showManual by remember { mutableStateOf(false) }
     var editIq by remember { mutableStateOf<Mosque?>(null) }
+    var moving by remember { mutableStateOf<Mosque?>(null) }
+    var reportFor by remember { mutableStateOf<Mosque?>(null) }
 
     fun reloadList() {
         mosques = Mosques.list(ctx)
@@ -336,8 +338,16 @@ fun MapScreen(v: Int) {
                             map.addOnMapClickListener { point ->
                                 if (pickMode) {
                                     pickMode = false
-                                    manual = point.latitude to point.longitude
-                                    showManual = true
+                                    val mv = moving
+                                    if (mv != null) {
+                                        moving = null
+                                        val nm = Mosques.move(c, mv, point.latitude, point.longitude)
+                                        reloadList()
+                                        selected = mosques.firstOrNull { it.id == nm.id }
+                                    } else {
+                                        manual = point.latitude to point.longitude
+                                        showManual = true
+                                    }
                                     return@addOnMapClickListener true
                                 }
                                 val px = map.projection.toScreenLocation(point)
@@ -355,11 +365,7 @@ fun MapScreen(v: Int) {
             )
 
             // Lade-Hinweis, damit man sieht, dass die App arbeitet und nicht hängt
-            val busyText = when {
-                locating -> t("locating_map")
-                Mosques.loading || Mosques.mwLoading -> t("loading_mosques")
-                else -> null
-            }
+            val busyText = if (locating) t("gps_searching") else null
             androidx.compose.animation.AnimatedVisibility(
                 visible = busyText != null,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp),
@@ -434,7 +440,7 @@ fun MapScreen(v: Int) {
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Txt(t("pick_on_map"), 15, FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Txt(if (moving != null) t("move_hint") else t("pick_on_map"), 15, FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Txt(t("cancel"), 15, color = Color(0xFF007AFF), modifier = Modifier.tap { pickMode = false }.padding(8.dp))
                     }
                 }
@@ -455,7 +461,13 @@ fun MapScreen(v: Int) {
                     onUpdated = { m ->
                         reloadList()
                         selected = mosques.firstOrNull { it.id == m.id } ?: m
-                    }
+                    },
+                    onHide = { m ->
+                        Prefs.hide(m.id)
+                        selected = null
+                        reloadList()
+                    },
+                    onReport = { m -> reportFor = m }
                 )
             }
         }
@@ -488,6 +500,25 @@ fun MapScreen(v: Int) {
             selected = mosques.firstOrNull { it.id == m.id }
             mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(m.lat, m.lng), 15.0))
         }
+    }
+    reportFor?.let { m ->
+        ChoiceDialog(
+            Choice(t("report"), listOf(t("rep_position"), t("rep_gone"), t("rep_times")), -1) { i ->
+                when (i) {
+                    0 -> {
+                        moving = m
+                        selected = null
+                        pickMode = true
+                    }
+                    1 -> {
+                        Prefs.hide(m.id)
+                        selected = null
+                        reloadList()
+                    }
+                    else -> editIq = m
+                }
+            }
+        ) { reportFor = null }
     }
     editIq?.let { m ->
         IqamahDialog(m, onClose = { editIq = null }) { iq ->

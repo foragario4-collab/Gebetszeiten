@@ -15,6 +15,10 @@ import androidx.compose.ui.unit.dp
 object Glyph {
     const val CAR = "M6.2 5.8A2.5 2.5 0 0 1 8.6 4h6.8a2.5 2.5 0 0 1 2.4 1.8L19 10h.5A1.5 1.5 0 0 1 21 11.5V17a1 1 0 0 1-1 1h-1v1.5a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1V18H8v1.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V18H4a1 1 0 0 1-1-1v-5.5A1.5 1.5 0 0 1 4.5 10H5z"
     const val CAR_WINDOW = "M7.4 10l.95-3.1a1 1 0 0 1 .96-.7h5.38a1 1 0 0 1 .96.7l.95 3.1z"
+    const val SHARE = "M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"
+    const val COPY = "M9 9h11v11H9zM5 15H4V4h11v1"
+    const val SEARCH = "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20"
+    const val ROUTE = "M3 11l18-8-8 18-2-8z"
     const val WALK = "M12.4 7.2c.9-.3 1.9.1 2.3 1l1.3 2.7 2.4 1.1a1.1 1.1 0 0 1-.9 2l-2.8-1.3a1.6 1.6 0 0 1-.8-.8l-.5-1-1 4 2.4 2.6c.2.2.3.5.3.8v3.5a1.1 1.1 0 0 1-2.2 0v-3.1l-2.5-2.6-1.1 4.2a1.1 1.1 0 0 1-2.1-.5l2.2-8.8-1.6.9-.9 2.6a1.1 1.1 0 0 1-2-.7l1-3a1.6 1.6 0 0 1 .7-.9z"
 }
 
@@ -36,6 +40,26 @@ fun TravelIcon(mode: Int, color: Color, cut: Color, size: Dp = 18.dp) {
                 drawCircle(color, 2.2f, androidx.compose.ui.geometry.Offset(13.6f, 3.9f))
                 drawPath(walk, color)
             }
+        }
+    }
+}
+
+
+/** Linien-Symbol aus einem SVG-Pfad (Raster 24×24). */
+@Composable
+fun GlyphIcon(path: String, color: Color, size: Dp = 20.dp) {
+    val p = remember(path) { PathParser().parsePathString(path).toPath() }
+    Canvas(Modifier.size(size)) {
+        val f = this.size.width / 24f
+        scale(f, f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            drawPath(
+                p, color,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 2f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                )
+            )
         }
     }
 }
