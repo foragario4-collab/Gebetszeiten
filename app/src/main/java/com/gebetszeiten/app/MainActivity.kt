@@ -99,7 +99,7 @@ fun App() {
                         .windowInsetsPadding(WindowInsets.statusBars)
                 ) {
                     when (tab) {
-                        0 -> TodayScreen(v) { showSettings = true }
+                        0 -> TodayScreen(v, onSettings = { showSettings = true }, onOpenMap = { tab = 2 })
                         1 -> QiblaScreen(v)
                         else -> MapScreen(v)
                     }

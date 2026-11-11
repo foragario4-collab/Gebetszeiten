@@ -201,6 +201,11 @@ object Prefs {
         get() = sp.getBoolean("radarExplained", false)
         set(v) = edit { putBoolean("radarExplained", v) }
 
+    /** „Meine Moschee“ (ID) für die Startseite */
+    var favId: String
+        get() = sp.getString("favId", "") ?: ""
+        set(v) = edit { putString("favId", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

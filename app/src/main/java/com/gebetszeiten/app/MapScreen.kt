@@ -227,7 +227,11 @@ fun MapScreen(v: Int) {
     var myLng by remember { mutableDoubleStateOf(Prefs.lng) }
 
     // ---------- Moscheen ----------
-    var mosques by remember { mutableStateOf(allPlaces(ctx)) }
+    var mosques by remember { mutableStateOf<List<Mosque>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        // Dateien im Hintergrund lesen, damit die Karte sofort erscheint
+        mosques = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { allPlaces(ctx) }
+    }
     val visible = remember(mosques, v) {
         mosques.filter {
             when (it.category) {

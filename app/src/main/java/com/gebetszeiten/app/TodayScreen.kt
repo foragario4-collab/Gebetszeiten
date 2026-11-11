@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.delay
 
 fun hasLocPermission(ctx: Context): Boolean =
@@ -43,7 +44,7 @@ fun hasLocPermission(ctx: Context): Boolean =
         ctx.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 @Composable
-fun TodayScreen(v: Int, onSettings: () -> Unit = {}) {
+fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {}) {
     val p = LocalPal.current
     val ctx = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -140,7 +141,11 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}) {
                         .tap { offset = 0 }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
-                ) { Txt("↺ " + t("tab_today"), 14, FontWeight.SemiBold, Color.White) }
+                ) {
+                    GlyphIcon(Glyph.RESET, Color.White, 15.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Txt(t("tab_today"), 14, FontWeight.SemiBold, Color.White)
+                }
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -181,6 +186,12 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}) {
             }
         }
         Spacer(Modifier.height(18.dp))
+        }
+
+        // Meine Moschee: nächste Iqamah und wann losfahren
+        if (isToday) {
+            MyMosqueCard(now, v, onOpenMap)
+            Spacer(Modifier.height(18.dp))
         }
 
         // Liste
@@ -319,5 +330,66 @@ private fun SlidersIcon(c: Color) {
         drawLine(c, androidx.compose.ui.geometry.Offset(s * 0.1f, s * 0.7f), androidx.compose.ui.geometry.Offset(s * 0.9f, s * 0.7f), sw, androidx.compose.ui.graphics.StrokeCap.Round)
         drawCircle(c, s * 0.13f, androidx.compose.ui.geometry.Offset(s * 0.66f, s * 0.3f))
         drawCircle(c, s * 0.13f, androidx.compose.ui.geometry.Offset(s * 0.34f, s * 0.7f))
+    }
+}
+
+
+private data class FavInfo(val name: String, val prayer: String, val iqMs: Long?, val travel: Int)
+
+@Composable
+private fun MyMosqueCard(now: Long, v: Int, onOpenMap: () -> Unit) {
+    val p = LocalPal.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val favId = Prefs.favId
+    var info by remember(favId) { mutableStateOf<FavInfo?>(null) }
+    // im Hintergrund laden (Dateien lesen, Route berechnen), jede Minute auffrischen
+    androidx.compose.runtime.LaunchedEffect(favId, now / 60_000L, v) {
+        if (favId.isBlank()) {
+            info = null
+            return@LaunchedEffect
+        }
+        info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val m = Mosques.listAll(ctx).firstOrNull { it.id == favId } ?: return@withContext null
+            val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
+            val sec = Routing.durations(Prefs.lat, Prefs.lng, listOf(m), Prefs.travelMode)[m.id]
+            val travel = Routing.minutes(sec, dist, Prefs.travelMode)
+            val t0 = System.currentTimeMillis()
+            val niq = nextIqamah(m, Times.around(t0), t0, t0 + travel * 60_000L)
+            FavInfo(NameFmt.name(m.name), niq?.first?.title ?: "", niq?.third, travel)
+        }
+    }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(p.card).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val i = info
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            KindIcon("Moschee", 26.dp)
+            Spacer(Modifier.width(8.dp))
+            Txt(if (i != null) t("my_mosque") + " · " + i.name else t("my_mosque"), 15, FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+            Txt(t("change"), 13, color = Color(0xFF007AFF), modifier = Modifier.tap(onClick = onOpenMap).padding(4.dp))
+        }
+        if (i == null) {
+            Txt(t("my_mosque_hint"), 13, color = p.sub)
+        } else if (i.iqMs == null) {
+            Txt(t("no_times"), 14, color = p.sub)
+        } else {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Txt(t("iqamah") + " " + i.prayer, 15, modifier = Modifier.weight(1f))
+                Txt(Fmt.time(i.iqMs), 24, FontWeight.SemiBold, p.accentText)
+            }
+            val leave = i.iqMs - i.travel * 60_000L
+            val late = leave < now
+            val c = if (late) Color(0xFFD70015) else Color(0xFF248A3D)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.copy(alpha = 0.13f)).padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Txt(t("leave_by", Fmt.time(leave)), 14, FontWeight.SemiBold, c, Modifier.weight(1f), maxLines = 1)
+                TravelIcon(Prefs.travelMode, c, p.card, 15.dp)
+                Spacer(Modifier.width(4.dp))
+                Txt(t("travel_min", i.travel), 14, FontWeight.Bold, c)
+            }
+        }
     }
 }

@@ -283,7 +283,7 @@ fun BoxScope.MosqueBottomSheet(
                     Box(
                         Modifier.size(36.dp).clip(CircleShape).background(p.fill).tap(onClick = onClose),
                         contentAlignment = Alignment.Center
-                    ) { Txt("✕", 14, FontWeight.Bold, p.sub) }
+                    ) { GlyphIcon(Glyph.CLOSE, p.sub, 14.dp) }
                 } else {
                     Chevron(expanded)
                 }
@@ -301,6 +301,17 @@ fun BoxScope.MosqueBottomSheet(
                 }
                 ModeSegmented(mode) { Prefs.travelMode = it }
             }
+            if (sorted.isEmpty() && status == null) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(16.dp)).background(p.bg).padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GlyphIcon(Glyph.SEARCH, p.sub, 40.dp)
+                    Txt(t("empty_title"), 16, FontWeight.SemiBold)
+                    Txt(t("empty_text"), 13, color = p.sub, align = TextAlign.Center)
+                }
+            }
             LazyColumn(
                 Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
@@ -311,64 +322,8 @@ fun BoxScope.MosqueBottomSheet(
                     val travel = Routing.minutes(routeSec[m.id], d, mode)
                     val arr = now + travel * 60_000L
                     val niq = nextIqamah(m, evs, now, arr)
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(p.bg)
-                            .tap(scale = 0.98f) { onPick(m) }
-                    ) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        KindIcon(m.category, 38.dp)
-                        Column(Modifier.weight(1f)) {
-                            val ty = NameFmt.type(m.name)
-                            val adr = if (Places.isPlace(m)) "" else (m.address.ifBlank { addrs[m.id].orEmpty() })
-                            androidx.compose.material3.Text(
-                                androidx.compose.ui.text.buildAnnotatedString {
-                                    withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold, color = p.text)) {
-                                        append(NameFmt.name(m.name))
-                                    }
-                                    if (ty.isNotBlank()) withStyle(androidx.compose.ui.text.SpanStyle(color = p.sub, fontSize = 13.sp)) {
-                                        append("  ·  $ty")
-                                    }
-                                },
-                                fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            if (adr.isNotBlank()) Txt(Bezirk.label(adr), 12, color = p.sub, maxLines = 1)
-                            if (niq != null) {
-                                CountLine(niq.first.title, niq.second, niq.first.day, now, p.accentText)
-                                CountLine(t("iqamah"), Fmt.time(niq.third), null, now, p.text, absMs = niq.third)
-                            } else if (nx != null) {
-                                Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
-                            } else {
-                                if (Places.isPlace(m)) {
-                                    Txt(
-                                        (if (m.category == Places.CAT_WUDU) t("kind_wudu") else t("kind_prayer")) +
-                                            (if (m.address.isNotBlank()) " · " + m.address else ""),
-                                        13, FontWeight.SemiBold,
-                                        if (m.category == Places.CAT_WUDU) Color(0xFF0A84FF) else Color(0xFF5E5CE6), maxLines = 1
-                                    )
-                                } else {
-                                    Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
-                                }
-                            }
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TravelIcon(mode, p.text, p.bg, 16.dp)
-                                Txt(t("travel_min", travel), 14, FontWeight.Bold)
-                            }
-                            Txt(Mosques.fmtDist(d), 12, color = p.sub)
-                        }
-                    }
-                    Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)) { ArrivalBar(arr, niq?.third) }
-                    }
+                    val adr = if (Places.isPlace(m)) "" else (m.address.ifBlank { addrs[m.id].orEmpty() })
+                    MosqueCard(m, d, adr, travel, mode, arr, niq, nx, now) { onPick(m) }
                 }
             }
         } else if (selected != null) {
@@ -511,6 +466,16 @@ private fun MosqueDetail(
             }
         } else {
         EntrancePhoto(m.id)
+        val isFav = Prefs.favId == m.id
+        Row(
+            Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp))
+                .background(if (isFav) p.accent.copy(alpha = 0.14f) else p.fill)
+                .tap { Prefs.favId = if (isFav) "" else m.id },
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Txt(if (isFav) t("is_my_mosque") else t("set_my_mosque"), 15, FontWeight.SemiBold, if (isFav) p.accentText else Color(0xFF007AFF), maxLines = 1)
+        }
         if (hasTimes(m)) {
             // dieselbe (aktuelle) Position wie in der Liste – sonst passen Entfernung und Zeit nicht zusammen
             val dist = Mosques.distance(myLat, myLng, m.lat, m.lng)
@@ -722,9 +687,15 @@ private fun MosqueDetail(
                 contentAlignment = Alignment.Center
             ) { Txt(if (hasTimes(m)) t("edit_iq") else t("enter_manual"), 15, FontWeight.SemiBold, Color(0xFF007AFF)) }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Txt(t("hide"), 15, color = p.sub, modifier = Modifier.tap { onHide(m) }.padding(vertical = 8.dp))
-            Txt(t("report"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onReport(m) }.padding(vertical = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(p.fill).tap { onHide(m) },
+                contentAlignment = Alignment.Center
+            ) { Txt(t("hide"), 15, FontWeight.SemiBold, p.text) }
+            Box(
+                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x1AFF3B30)).tap { onReport(m) },
+                contentAlignment = Alignment.Center
+            ) { Txt(t("report"), 15, FontWeight.SemiBold, Color(0xFFFF3B30)) }
         }
         }
     }
@@ -863,4 +834,75 @@ private fun CountLine(label: String, time: String, day: java.time.LocalDate?, no
         else -> " · " + t("started")
     }
     Txt("$label $time$rest", 13, FontWeight.SemiBold, color, maxLines = 1)
+}
+
+
+/** Aufgeräumte Karte in der Liste: Name + Adresse, Adhan und Iqamah nebeneinander, ca. Ankunft. */
+@Composable
+private fun MosqueCard(
+    m: Mosque, d: Float, adr: String, travel: Int, mode: Int, arr: Long,
+    niq: Triple<Ev, String, Long>?, nx: Triple<String, String, String?>?, now: Long, onClick: () -> Unit
+) {
+    val p = LocalPal.current
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(p.bg).tap(scale = 0.98f, onClick = onClick).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            KindIcon(m.category, 38.dp)
+            Column(Modifier.weight(1f)) {
+                Txt(NameFmt.name(m.name), 16, FontWeight.SemiBold, maxLines = 1)
+                val sub = when {
+                    Places.isPlace(m) -> (if (m.category == Places.CAT_WUDU) t("kind_wudu") else t("kind_prayer")) +
+                        (if (m.address.isNotBlank()) " · " + m.address else "")
+                    adr.isNotBlank() -> Bezirk.short(adr)
+                    else -> NameFmt.type(m.name)
+                }
+                if (sub.isNotBlank()) Txt(sub, 12, color = p.sub, maxLines = 1)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TravelIcon(mode, p.text, p.bg, 16.dp)
+                    Txt(t("travel_min", travel), 14, FontWeight.Bold)
+                }
+                Txt(Mosques.fmtDist(d), 12, color = p.sub)
+            }
+        }
+        if (!Places.isPlace(m)) {
+            if (niq != null || nx != null) {
+                val title = niq?.first?.title ?: nx!!.first
+                val adhan = niq?.second ?: nx!!.second
+                val adhanMs = try {
+                    val day = niq?.first?.day ?: Times.today(now)
+                    val parts = adhan.split(":")
+                    day.atTime(parts[0].toInt(), parts[1].toInt()).atZone(Times.zone()).toInstant().toEpochMilli()
+                } catch (e: Exception) {
+                    null
+                }
+                val iqText = niq?.let { Fmt.time(it.third) } ?: nx?.third
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimeTile("$title · ${t("adhan")}".uppercase(), adhan, adhanMs, now, p.text, p.sub, Modifier.weight(1f))
+                    TimeTile(t("iqamah").uppercase(), iqText ?: "–", niq?.third, now, p.accentText, p.accentText, Modifier.weight(1f))
+                }
+            } else {
+                Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
+            }
+            ArrivalBar(arr, niq?.third)
+        }
+    }
+}
+
+@Composable
+private fun TimeTile(label: String, time: String, ms: Long?, now: Long, color: Color, labelColor: Color, modifier: Modifier) {
+    val p = LocalPal.current
+    Column(modifier.clip(RoundedCornerShape(12.dp)).background(p.card).padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Txt(label, 11, FontWeight.SemiBold, labelColor, maxLines = 1)
+        Txt(time, 22, FontWeight.SemiBold, color, maxLines = 1)
+        val rest = when {
+            ms == null -> ""
+            ms > now -> t("in_time", Fmt.duration(ms - now))
+            else -> t("started")
+        }
+        if (rest.isNotBlank()) Txt(rest, 12, color = p.sub, maxLines = 1)
+    }
 }

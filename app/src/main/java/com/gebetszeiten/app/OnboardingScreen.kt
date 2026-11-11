@@ -203,7 +203,7 @@ fun OnboardingScreen(v: Int) {
                 }
                 4 -> Centered {
                     Box(Modifier.size(84.dp).clip(CircleShape).background(Color(0x1FFF3B30)), contentAlignment = Alignment.Center) {
-                        Txt("🔔", 36)
+                        GlyphIcon(Glyph.BELL, Color(0xFFFF3B30), 40.dp)
                     }
                     Spacer(Modifier.height(18.dp))
                     Txt(t("sec_notif"), 30, FontWeight.Bold, align = TextAlign.Center)
@@ -233,6 +233,8 @@ fun OnboardingScreen(v: Int) {
                     Txt(t("ob_done"), 30, FontWeight.Bold, align = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
                     Txt(t("ob_done_sub"), 15, color = p.sub, align = TextAlign.Center)
+                    Spacer(Modifier.height(12.dp))
+                    Txt(t("ob_more"), 14, color = p.sub, align = TextAlign.Center)
                 }
             }
         }

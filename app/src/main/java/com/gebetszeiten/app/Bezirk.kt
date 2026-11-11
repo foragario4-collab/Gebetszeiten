@@ -17,6 +17,14 @@ object Bezirk {
         return "$n. ${names[n - 1]}"
     }
 
+    /** Kurz für Listen: „Rinnböckstraße 17 · 11. Simmering“. */
+    fun short(address: String): String {
+        if (address.isBlank()) return ""
+        val street = address.substringBefore(",").trim()
+        val b = of(address)
+        return if (b != null) "$street · $b" else address
+    }
+
     /** Adresse mit Bezirk: „Rinnböckstraße 17, 1110 Wien · 11. Simmering“. */
     fun label(address: String): String {
         if (address.isBlank()) return ""
