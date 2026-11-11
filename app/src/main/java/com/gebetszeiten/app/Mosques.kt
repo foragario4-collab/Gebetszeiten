@@ -29,7 +29,9 @@ data class Mosque(
     val iqamah: Map<String, String> = emptyMap(),
     val custom: Boolean = false,
     val fetchedAt: Long = 0L,
-    val category: String = "Moschee"
+    val category: String = "Moschee",
+    /** Eigene Website laut OpenStreetMap (dort steht oft der MasjidBox-/Mawaqit-Link) */
+    val website: String? = null
 )
 
 object Mosques {
@@ -100,7 +102,7 @@ object Mosques {
                 val m = arr.getJSONObject(it)
                 Mosque(
                     m.getString("id"), m.getString("name"), m.getDouble("lat"), m.getDouble("lng"), m.optString("addr"),
-                    category = m.optString("cat", "Moschee")
+                    category = m.optString("cat", "Moschee"), website = m.optString("web").ifBlank { null }
                 )
             }
         } catch (e: Exception) {
@@ -185,7 +187,7 @@ object Mosques {
         }.map { m -> ov[m.id]?.let { m.copy(iqamah = it) } ?: m }
         val good = mine + mw
         // Islam-Landkarte: genaue Namen, aber ohne Zeiten – nach eigenen und Mawaqit
-        val lk = (landkarte ?: emptyList()).filter { l ->
+        val lk = (if (Prefs.useLandkarte) landkarte ?: emptyList() else emptyList()).filter { l ->
             good.none { distance(it.lat, it.lng, l.lat, l.lng) < 80f }
         }.map { l -> ov[l.id]?.let { l.copy(iqamah = it) } ?: l }
         val better = good + lk
@@ -536,7 +538,27 @@ object Mosques {
      * Zeiten für eine Moschee ohne Zeiten im Hintergrund suchen:
      * 1. Mawaqit nach Name, 2. Mawaqit nach Position, 3. MasjidBox/Mawaqit-Links aus dem Namen.
      */
+    /** Website der Moschee nach einem MasjidBox- oder Mawaqit-Link durchsuchen. */
+    private fun timesLinkFromWebsite(web: String): String? {
+        if (web.contains("masjidbox.com", true) || web.contains("mawaqit.net", true)) return web
+        return try {
+            val html = httpGet(web, browser = true)
+            Regex("(?i)https?://(?:www\\.)?(?:masjidbox\\.com/(?:gebetszeiten|prayer-times)/[a-z0-9%_\\-]+|mawaqit\\.net/[a-z]{2}/(?:m/)?[a-z0-9%_\\-]+)")
+                .find(html)?.value
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun findTimes(m: Mosque): Draft? {
+        // 0) Eigene Website der Moschee (aus OpenStreetMap) → verlinkte MasjidBox-/Mawaqit-Seite
+        m.website?.let { w ->
+            val link = timesLinkFromWebsite(w)
+            if (link != null) {
+                val d = try { fetchDraft(link) } catch (e: Exception) { null }
+                if (d != null && (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty())) return d
+            }
+        }
         val cands = ArrayList<Mosque>()
         try {
             cands += mawaqitQuery("word=" + URLEncoder.encode(m.name, "UTF-8"))
@@ -653,7 +675,7 @@ object Mosques {
                 items.forEach {
                     arr.put(
                         JSONObject().put("id", it.id).put("name", it.name).put("lat", it.lat).put("lng", it.lng)
-                            .put("addr", it.address).put("cat", it.category)
+                            .put("addr", it.address).put("cat", it.category).put("web", it.website ?: "")
                     )
                 }
                 osmFile(app).writeText(
@@ -712,7 +734,9 @@ object Mosques {
             val name = rawName.ifBlank { if (isMosque) "Moschee" else "Gebetsraum" }
             val addr = listOf(tags.optString("addr:street"), tags.optString("addr:housenumber"))
                 .filter { it.isNotBlank() }.joinToString(" ")
-            out.add(Mosque(e.getString("type") + e.getLong("id"), name, la, lo, addr, category = cat))
+            val web = listOf("website", "contact:website", "url", "contact:facebook").map { tags.optString(it) }
+                .firstOrNull { it.isNotBlank() }?.let { if (it.startsWith("http")) it else "https://$it" }
+            out.add(Mosque(e.getString("type") + e.getLong("id"), name, la, lo, addr, category = cat, website = web))
         }
         // Doppelte (z. B. Gebäude + Punkt derselben Moschee) zusammenfassen
         val unique = ArrayList<Mosque>()
@@ -742,6 +766,20 @@ object Mosques {
     fun countOsm(): Int = osm?.size ?: 0
     fun countOwn(): Int = own?.size ?: 0
     fun countMawaqit(): Int = mawaqit?.size ?: 0
+
+    /** Verständlicher Grund statt Technik („HTTP 404“ → „Seite nicht gefunden“). */
+    fun friendlyInfo(): String {
+        val i = lastFetchInfo
+        val txt = when {
+            i.contains("403") || i.contains("401") || i.contains("429") -> t("fi_blocked")
+            i.contains("404") || i.contains("410") -> t("fi_notfound")
+            i.contains("keine Zeiten") -> t("fi_notimes")
+            i.startsWith("OK") -> ""
+            i.isBlank() -> ""
+            else -> t("fi_unreachable")
+        }
+        return if (txt.isBlank()) "" else " – $txt"
+    }
 
     /** Automatische Zeitsuche höchstens einmal am Tag pro Moschee. */
     fun shouldAutoFind(ctx: Context, id: String): Boolean {

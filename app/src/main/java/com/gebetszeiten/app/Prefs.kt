@@ -192,6 +192,15 @@ object Prefs {
         get() = sp.getString("tone", "ton_gong") ?: "ton_gong"
         set(v) = edit { putString("tone", v) }
 
+    /** Vereine aus der Islam-Landkarte zeigen (standardmäßig aus – enthält auch Orte ohne Gebetsmöglichkeit) */
+    var useLandkarte: Boolean
+        get() = sp.getBoolean("useLandkarte", false)
+        set(v) = edit { putBoolean("useLandkarte", v) }
+
+    var radarExplained: Boolean
+        get() = sp.getBoolean("radarExplained", false)
+        set(v) = edit { putBoolean("radarExplained", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

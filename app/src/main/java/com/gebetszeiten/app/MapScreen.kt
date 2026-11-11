@@ -238,6 +238,7 @@ fun MapScreen(v: Int) {
         }
     }
     var showAddPlace by remember { mutableStateOf<String?>(null) }
+    var showRadarInfo by remember { mutableStateOf(false) }
     var chooseAdd by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Mosque?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -271,7 +272,7 @@ fun MapScreen(v: Int) {
             }
         }
         // Islam-Landkarte (ganz Österreich), einmal im Monat
-        if (force || Mosques.landkarteNeedsRefresh(ctx)) {
+        if (Prefs.useLandkarte && (force || Mosques.landkarteNeedsRefresh(ctx))) {
             Mosques.refreshLandkarte(ctx) { mosques = allPlaces(ctx) }
         }
         // Mawaqit: Moscheen mit tagesaktuellen Zeiten (Adhan, Iqamah, Jumuah)
@@ -284,8 +285,32 @@ fun MapScreen(v: Int) {
     }
 
     var locating by remember { mutableStateOf(false) }
+    var gpsOn by remember { mutableStateOf(Loc.isOn(ctx)) }
+    DisposableEffect(Unit) {
+        val r = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: Context, i: android.content.Intent) {
+                gpsOn = Loc.isOn(ctx)
+            }
+        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            ctx, r, android.content.IntentFilter(android.location.LocationManager.PROVIDERS_CHANGED_ACTION),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+        )
+        onDispose {
+            try {
+                ctx.unregisterReceiver(r)
+            } catch (e: Exception) {
+            }
+        }
+    }
 
     fun locate(animate: Boolean) {
+        gpsOn = Loc.isOn(ctx)
+        if (!gpsOn) {
+            locating = false
+            load(false)
+            return
+        }
         locating = true
         Loc.fetch(ctx) { loc ->
             locating = false
@@ -296,6 +321,13 @@ fun MapScreen(v: Int) {
             }
             load(false)
         }
+    }
+
+    // GPS wurde gerade eingeschaltet → sofort Standort holen
+    var gpsSeen by remember { mutableStateOf(gpsOn) }
+    LaunchedEffect(gpsOn) {
+        if (gpsOn && !gpsSeen) locate(false)
+        gpsSeen = gpsOn
     }
 
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
@@ -420,7 +452,11 @@ fun MapScreen(v: Int) {
             )
 
             // Lade-Hinweis, damit man sieht, dass die App arbeitet und nicht hängt
-            val busyText = if (locating) t("gps_searching") else null
+            val busyText = when {
+                !gpsOn -> t("gps_off_pill")
+                locating -> t("gps_searching")
+                else -> null
+            }
             androidx.compose.animation.AnimatedVisibility(
                 visible = busyText != null,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 104.dp),
@@ -431,14 +467,15 @@ fun MapScreen(v: Int) {
                     Modifier
                         .shadow(6.dp, RoundedCornerShape(18.dp))
                         .clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xF21C1C1E))
+                        .background(if (!gpsOn) Color(0xF2FF9500) else Color(0xF21C1C1E))
+                        .tap(enabled = !gpsOn) { Loc.openSettings(ctx) }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    androidx.compose.material3.CircularProgressIndicator(
+                    if (gpsOn) androidx.compose.material3.CircularProgressIndicator(
                         modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp,
                         trackColor = Color.White.copy(alpha = 0.25f)
-                    )
+                    ) else GlyphIcon(Glyph.ROUTE, Color.White, 16.dp)
                     Box(Modifier.size(8.dp))
                     Txt(busyText ?: "", 13, FontWeight.SemiBold, Color.White, maxLines = 1)
                 }
@@ -471,7 +508,9 @@ fun MapScreen(v: Int) {
             ) {
                 Txt(t("radar"), 14, FontWeight.SemiBold)
                 IosSwitch(Prefs.radar) { on ->
-                    if (on) {
+                    if (on && !Prefs.radarExplained) {
+                        showRadarInfo = true
+                    } else if (on) {
                         if (permOk) {
                             Prefs.radar = true
                             if (!RadarService.start(ctx)) Prefs.radar = false
@@ -542,6 +581,28 @@ fun MapScreen(v: Int) {
         }
     }
 
+    if (showRadarInfo) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRadarInfo = false },
+            title = { Txt(t("sec_radar"), 18, FontWeight.Bold) },
+            text = { Txt(t("radar_explain"), 15) },
+            confirmButton = {
+                Txt(t("radar_start"), 16, FontWeight.SemiBold, Color(0xFF007AFF), Modifier.tap {
+                    showRadarInfo = false
+                    Prefs.radarExplained = true
+                    if (permOk) {
+                        Prefs.radar = true
+                        if (!RadarService.start(ctx)) Prefs.radar = false
+                    } else {
+                        perm.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    }
+                }.padding(8.dp))
+            },
+            dismissButton = {
+                Txt(t("cancel"), 16, color = Color(0xFF007AFF), modifier = Modifier.tap { showRadarInfo = false }.padding(8.dp))
+            }
+        )
+    }
     if (chooseAdd) {
         ChoiceDialog(Choice(t("add_what"), listOf(t("add_mosque"), t("kind_prayer"), t("kind_wudu")), -1) { i ->
             when (i) {
@@ -726,7 +787,7 @@ private fun AddMosqueDialog(onClose: () -> Unit, onSaved: (Mosque) -> Unit, onPi
         pos = null
         Thread {
             val d = Mosques.searchByName(query)
-            main.post { applyResult(d, t("nothing_found") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")) }
+            main.post { applyResult(d, t("nothing_found") + Mosques.friendlyInfo()) }
         }.start()
     }
 
@@ -744,7 +805,7 @@ private fun AddMosqueDialog(onClose: () -> Unit, onSaved: (Mosque) -> Unit, onPi
                 else Mosques.geocode(d.name)
                 Triple(d, ps, null as String?)
             } catch (e: Exception) {
-                Triple(null, null, t("page_failed") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else ""))
+                Triple(null, null, t("page_failed") + Mosques.friendlyInfo())
             }
             main.post {
                 busy = false

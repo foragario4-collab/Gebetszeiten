@@ -90,7 +90,8 @@ class RadarService : Service(), LocationListener {
         lm = m
         listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).forEach { p ->
             try {
-                if (m.isProviderEnabled(p)) m.requestLocationUpdates(p, 30_000L, 50f, this, Looper.getMainLooper())
+                // auch ausgeschaltete Quellen anmelden – sie liefern, sobald GPS wieder an ist
+                m.requestLocationUpdates(p, 30_000L, 50f, this, Looper.getMainLooper())
             } catch (e: Exception) {
             }
         }
@@ -98,6 +99,14 @@ class RadarService : Service(), LocationListener {
             .mapNotNull { runCatching { m.getLastKnownLocation(it) }.getOrNull() }
             .maxByOrNull { it.time }
         if (last != null) onLocationChanged(last)
+    }
+
+    override fun onProviderEnabled(provider: String) {
+        getSystemService(NotificationManager::class.java)?.notify(ID, build(lastLoc?.let { Mosques.nearest(this, it.latitude, it.longitude) }))
+    }
+
+    override fun onProviderDisabled(provider: String) {
+        getSystemService(NotificationManager::class.java)?.notify(ID, build(null))
     }
 
     override fun onLocationChanged(loc: Location) {
@@ -124,9 +133,15 @@ class RadarService : Service(), LocationListener {
 
     private fun build(near: Pair<Mosque, Float>?): Notification {
         val next = nextPrayer()
-        val title = if (near != null) "${near.first.name} · ${Mosques.fmtDist(near.second)}" else t("n_radar_active")
+        val gpsOff = !Loc.isOn(this)
+        val title = when {
+            gpsOff -> t("gps_off_title")
+            near != null -> "${NameFmt.name(near.first.name)} · ${Mosques.fmtDist(near.second)}"
+            else -> t("n_radar_active")
+        }
         val iq = near?.first?.iqamah?.get(next.kind.name)
-        val text = t("n_at", next.title, Fmt.time(next.at)) + (if (iq != null) " · " + t("n_iq", iq) else "")
+        val text = if (gpsOff) t("gps_off_text")
+        else t("n_at", next.title, Fmt.time(next.at)) + (if (iq != null) " · " + t("n_iq", iq) else "")
         val stopPi = PendingIntent.getService(
             this, 9,
             Intent(this, RadarService::class.java).setAction(ACTION_STOP),
@@ -143,6 +158,15 @@ class RadarService : Service(), LocationListener {
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(t("n_nearest"))
+            .also { nb ->
+                if (gpsOff) nb.setContentIntent(
+                    PendingIntent.getActivity(
+                        this, 11,
+                        Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+            }
             .setContentIntent(Notifs.openApp(this))
             .setOngoing(true)
             .setOnlyAlertOnce(true)

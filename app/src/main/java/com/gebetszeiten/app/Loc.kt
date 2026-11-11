@@ -84,4 +84,23 @@ object Loc {
             Handler(Looper.getMainLooper()).post { cb(name) }
         }.start()
     }
+
+    /** Ist der Standort (GPS/Netzwerk) am Handy eingeschaltet? */
+    fun isOn(ctx: android.content.Context): Boolean {
+        val m = ctx.getSystemService(android.location.LocationManager::class.java) ?: return false
+        return if (android.os.Build.VERSION.SDK_INT >= 28) m.isLocationEnabled
+        else m.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+            m.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+    }
+
+    /** Android-Einstellung „Standort“ öffnen. */
+    fun openSettings(ctx: android.content.Context) {
+        try {
+            ctx.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+        }
+    }
 }

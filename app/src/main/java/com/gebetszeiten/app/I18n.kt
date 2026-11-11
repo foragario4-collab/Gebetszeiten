@@ -50,7 +50,7 @@ object I18n {
             val map = HashMap<String, Array<String>>()
             ctx.applicationContext.assets.open("i18n.tsv").bufferedReader(Charsets.UTF_8).useLines { lines ->
                 lines.forEach { line ->
-                    val parts = line.split('\t')
+                    val parts = line.split('\t').map { it.replace("\\n", "\n") }
                     if (parts.size >= 2) map[parts[0]] = parts.drop(1).toTypedArray()
                 }
             }

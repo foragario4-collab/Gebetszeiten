@@ -405,7 +405,7 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             DiagRow(t("d_internet"), if (net) t("online") else t("offline"), net)
             DiagRow(t("d_osm"), "${Mosques.countOsm()}", Mosques.countOsm() > 0)
             DiagRow("Mawaqit", "${Mosques.countMawaqit()}", Mosques.countMawaqit() > 0)
-            DiagRow("Islam-Landkarte", "${Mosques.countLandkarte()}", Mosques.countLandkarte() > 0)
+            ToggleRow(t("use_lk"), Prefs.useLandkarte, sub = t("use_lk_sub")) { Prefs.useLandkarte = it; changed() }
             DiagRow(t("d_own"), "${Mosques.countOwn()}", true)
             DiagRow(t("d_next"), nextAlarm?.let { "${Fmt.time(it.at)} · ${it.ev?.title ?: t("sec_widget")}" } ?: t("none"), nextAlarm != null)
             ButtonRow(t("reload_mosques")) {

@@ -425,7 +425,7 @@ private fun MosqueDetail(
                 if (d != null && (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty())) {
                     onUpdated(Mosques.attachLink(ctx, m, d))
                 } else {
-                    info = t("not_found_times") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")
+                    info = t("not_found_times")
                 }
             }
         }.start()
@@ -444,9 +444,9 @@ private fun MosqueDetail(
             main.post {
                 busy = false
                 when {
-                    res == null -> info = t("page_failed") + (if (Mosques.lastFetchInfo.isNotBlank()) " (" + Mosques.lastFetchInfo + ")" else "")
+                    res == null -> info = t("page_failed") + Mosques.friendlyInfo()
                     res.adhan.isEmpty() && res.iqamah.isEmpty() ->
-                        info = t("no_times_found") + " (" + Mosques.lastFetchInfo + ")"
+                        info = t("no_times_found") + Mosques.friendlyInfo()
                     else -> preview = res
                 }
             }
