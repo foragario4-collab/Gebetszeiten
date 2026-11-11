@@ -328,6 +328,22 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             ToggleRow(Kind.LAST_THIRD.label, Prefs.wThird) { Prefs.wThird = it; Widgets.updateAll(ctx) }
         }
 
+        // ---------- Ausgeblendete Orte ----------
+        val hidden = Prefs.hiddenIds
+        if (hidden.isNotEmpty()) {
+            val all = Mosques.listAll(ctx).filter { it.id in hidden }
+            Section(t("hidden_places"), footer = t("hidden_footer")) {
+                all.forEachIndexed { i, m ->
+                    RowBase(i == 0) {
+                        LabelCol(m.name, m.address.ifBlank { null })
+                        Txt(t("unhide"), 15, FontWeight.SemiBold, Color(0xFF007AFF),
+                            modifier = Modifier.tap { Prefs.hiddenIds = Prefs.hiddenIds - m.id }.padding(6.dp))
+                    }
+                }
+                ButtonRow(t("unhide_all")) { Prefs.hiddenIds = emptySet() }
+            }
+        }
+
         // ---------- Diagnose ----------
         Section(t("sec_diag"), footer = t("diag_footer")) {
             val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
@@ -368,12 +384,9 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             DiagRow(t("d_internet"), if (net) t("online") else t("offline"), net)
             DiagRow(t("d_osm"), "${Mosques.countOsm()}", Mosques.countOsm() > 0)
             DiagRow("Mawaqit", "${Mosques.countMawaqit()}", Mosques.countMawaqit() > 0)
+            DiagRow("Islam-Landkarte", "${Mosques.countLandkarte()}", Mosques.countLandkarte() > 0)
             DiagRow(t("d_own"), "${Mosques.countOwn()}", true)
             DiagRow(t("d_next"), nextAlarm?.let { "${Fmt.time(it.at)} · ${it.ev?.title ?: t("sec_widget")}" } ?: t("none"), nextAlarm != null)
-            val hiddenCount = Prefs.hiddenIds.size
-            if (hiddenCount > 0) {
-                ButtonRow(t("hidden_n", hiddenCount) + " · " + t("unhide_all")) { Prefs.hiddenIds = emptySet() }
-            }
             ButtonRow(t("reload_mosques")) {
                 Mosques.refresh(ctx, Prefs.lat, Prefs.lng) { okLoad ->
                     locStatus = if (okLoad) t("reloaded", Mosques.countOsm())

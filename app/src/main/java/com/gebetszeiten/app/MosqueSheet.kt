@@ -298,7 +298,8 @@ fun BoxScope.MosqueBottomSheet(
                         Column(Modifier.weight(1f)) {
                             Txt(m.name, 15, FontWeight.SemiBold, maxLines = 1)
                             if (niq != null) {
-                                Txt("${niq.first.title} ${niq.second} · ${t("iqamah")} ${Fmt.time(niq.third)}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
+                                CountLine(niq.first.title, niq.second, niq.first.day, now, p.accentText)
+                                CountLine(t("iqamah"), Fmt.time(niq.third), null, now, p.text, absMs = niq.third)
                             } else if (nx != null) {
                                 Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else {
@@ -340,6 +341,20 @@ private fun MosqueDetail(
 
     var finding by remember(m.id) { mutableStateOf(false) }
     var showLink by remember(m.id) { mutableStateOf(false) }
+    var addr by remember(m.id) { mutableStateOf(m.address) }
+    LaunchedEffect(m.id) {
+        if (addr.isBlank()) {
+            addr = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Mosques.lookupAddress(ctx, m) } ?: ""
+            if (addr.isNotBlank()) onUpdated(m.copy(address = addr))
+        }
+        // Mawaqit-Suche liefert oft keine Iqamah – dann die Moschee-Seite selbst lesen
+        if (m.source == "Mawaqit" && m.iqamah.isEmpty() && m.url != null) {
+            val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try { Mosques.fetchDraft(m.url) } catch (e: Exception) { null }
+            }
+            if (d != null && d.iqamah.isNotEmpty()) onUpdated(Mosques.attachLink(ctx, m, d))
+        }
+    }
     var preview by remember(m.id) { mutableStateOf<Mosques.Draft?>(null) }
 
     fun findTimes() {
@@ -394,7 +409,7 @@ private fun MosqueDetail(
     ) {
         // Teilen · Adresse kopieren · Suchen · Route
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val addrText = listOf(m.name, m.address).filter { it.isNotBlank() }.joinToString(", ")
+            val addrText = listOf(m.name, addr).filter { it.isNotBlank() }.joinToString(", ")
             ActionTile(Glyph.SHARE, t("share")) {
                 val text = addrText + "\nhttps://www.openstreetmap.org/?mlat=%.5f&mlon=%.5f#map=18/%.5f/%.5f".format(
                     java.util.Locale.US, m.lat, m.lng, m.lat, m.lng
@@ -482,7 +497,8 @@ private fun MosqueDetail(
                 }
             }
             Txt(
-                if (m.url != null && m.fetchedAt > 0) t("times_from", m.source, Fmt.time(m.fetchedAt))
+                if (m.url != null && m.fetchedAt > 0 && m.iqamah.isEmpty()) t("no_iq_hint", m.source)
+                else if (m.url != null && m.fetchedAt > 0) t("times_from", m.source, Fmt.time(m.fetchedAt))
                 else t("iq_manual"),
                 12, color = p.sub
             )
@@ -645,9 +661,6 @@ private fun MosqueDetail(
         }
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Txt(t("hide"), 15, color = p.sub, modifier = Modifier.tap { onHide(m) }.padding(vertical = 8.dp))
-            if (m.custom) {
-                Txt(t("remove"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onRemove(m) }.padding(vertical = 8.dp))
-            }
             Txt(t("report"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onReport(m) }.padding(vertical = 8.dp))
         }
     }
@@ -768,4 +781,22 @@ private fun RowScope.ActionTile(glyph: String, label: String, onClick: () -> Uni
         Spacer(Modifier.height(4.dp))
         Txt(label, 11, FontWeight.SemiBold, Color(0xFF007AFF), maxLines = 1, align = TextAlign.Center)
     }
+}
+
+
+/** „Fajr 05:22 · in 2 Std 10 Min“ – Uhrzeit plus Restzeit (oder „hat begonnen“). */
+@Composable
+private fun CountLine(label: String, time: String, day: java.time.LocalDate?, now: Long, color: Color, absMs: Long? = null) {
+    val ms = absMs ?: try {
+        val p = time.split(":")
+        (day ?: Times.today(now)).atTime(p[0].toInt(), p[1].toInt()).atZone(Times.zone()).toInstant().toEpochMilli()
+    } catch (e: Exception) {
+        null
+    }
+    val rest = when {
+        ms == null -> ""
+        ms > now -> " · " + t("in_time", Fmt.duration(ms - now))
+        else -> " · " + t("started")
+    }
+    Txt("$label $time$rest", 13, FontWeight.SemiBold, color, maxLines = 1)
 }

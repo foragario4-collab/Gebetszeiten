@@ -229,6 +229,10 @@ fun MapScreen(v: Int) {
                 mosques = Mosques.list(ctx)
             }
         }
+        // Islam-Landkarte (ganz Österreich), einmal im Monat
+        if (force || Mosques.landkarteNeedsRefresh(ctx)) {
+            Mosques.refreshLandkarte(ctx) { mosques = Mosques.list(ctx) }
+        }
         // Mawaqit: Moscheen mit tagesaktuellen Zeiten (Adhan, Iqamah, Jumuah)
         if (force || Mosques.mawaqitNeedsRefresh(ctx, myLat, myLng)) {
             Mosques.refreshMawaqit(ctx, myLat, myLng) {

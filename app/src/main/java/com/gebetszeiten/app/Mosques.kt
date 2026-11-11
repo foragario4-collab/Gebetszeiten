@@ -50,6 +50,17 @@ object Mosques {
 
     private fun osmFile(ctx: Context) = File(ctx.filesDir, "moscheen.json")
     private fun mwFile(ctx: Context) = File(ctx.filesDir, "mawaqit.json")
+    private fun lkFile(ctx: Context) = File(ctx.filesDir, "landkarte.json")
+    private fun addrFile(ctx: Context) = File(ctx.filesDir, "adressen.json")
+
+    @Volatile
+    private var landkarte: List<Mosque>? = null
+    private var lkAt = 0L
+    @Volatile
+    var lkLoading = false
+        private set
+    @Volatile
+    private var addrCache: MutableMap<String, String>? = null
 
     @Volatile
     private var mawaqit: List<Mosque>? = null
@@ -154,21 +165,167 @@ object Mosques {
      * Alle Moscheen: eigene + Mawaqit + OpenStreetMap.
      * Doppelte (näher als 80 m an einem besseren Eintrag) werden ausgeblendet.
      */
+    /** Alle sichtbaren Orte (ausgeblendete werden weggelassen). */
     fun list(ctx: Context): List<Mosque> {
+        val hidden = Prefs.hiddenIds
+        return listAll(ctx).filter { it.id !in hidden }
+    }
+
+    /** Alle Orte inklusive ausgeblendeter (für die Einstellungen). */
+    fun listAll(ctx: Context): List<Mosque> {
         if (osm == null) loadOsm(ctx)
         if (own == null) loadOwn(ctx)
         if (mawaqit == null) loadMw(ctx)
+        if (landkarte == null) loadLk(ctx)
+        if (addrCache == null) loadAddr(ctx)
         val mine = own ?: emptyList<Mosque>()
         val ov = overrides ?: emptyMap<String, Map<String, String>>()
         val mw = (mawaqit ?: emptyList()).filter { m ->
             mine.none { distance(it.lat, it.lng, m.lat, m.lng) < 80f || (it.url != null && it.url == m.url) }
         }.map { m -> ov[m.id]?.let { m.copy(iqamah = it) } ?: m }
-        val better = mine + mw
+        val good = mine + mw
+        // Islam-Landkarte: genaue Namen, aber ohne Zeiten – nach eigenen und Mawaqit
+        val lk = (landkarte ?: emptyList()).filter { l ->
+            good.none { distance(it.lat, it.lng, l.lat, l.lng) < 80f }
+        }.map { l -> ov[l.id]?.let { l.copy(iqamah = it) } ?: l }
+        val better = good + lk
         val fromOsm = (osm ?: emptyList()).filter { o ->
             better.none { distance(it.lat, it.lng, o.lat, o.lng) < 80f }
         }.map { o -> ov[o.id]?.let { o.copy(iqamah = it) } ?: o }
-        val hidden = Prefs.hiddenIds
-        return (better + fromOsm).distinctBy { it.id }.filter { it.id !in hidden }
+        val ac = addrCache ?: emptyMap<String, String>()
+        return (better + fromOsm).distinctBy { it.id }
+            .map { m -> if (m.address.isBlank() && ac[m.id] != null) m.copy(address = ac[m.id]!!) else m }
+    }
+
+    // ---------------- Islam-Landkarte (Universität Wien) ----------------
+
+    private val lkExclude = Regex(
+        "(?i)jugend|frauen|hilf|institut|stiftung|forum|pfadfind|lehrer|bestattung|publi|gmbh|kindergarten|schule|" +
+            "akademik|student|seelsorg|hochsch|forschung|kaiciid|dialog|religionsgemeinde|dachverband|dachorganisation|" +
+            "union |^union|rat |solidar|initiative|beratung|bildung ist|maarif|isma verein|hasene|human relief|tekaaful|" +
+            "takaful|wefa|rahma austria|hania|emus|amade|möh|imö|mlv|mjö|mpö|juwa|juwel|fiuk|cirde|leopold|ifime|" +
+            "verband|föderation in wien - frauen|egitim|edukation|club|sport- und kulturverein für"
+    )
+    private val lkMosque = Regex("(?i)moschee|masjid|mesjid|mescid|camii|dzemat|džemat|xhamia|musalla|gebetsraum|gebetshaus")
+
+    private fun loadLk(ctx: Context) {
+        try {
+            val f = lkFile(ctx)
+            if (!f.exists()) {
+                landkarte = emptyList()
+                return
+            }
+            val o = JSONObject(f.readText())
+            lkAt = o.getLong("at")
+            val arr = o.getJSONArray("items")
+            landkarte = (0 until arr.length()).map {
+                val m = arr.getJSONObject(it)
+                Mosque(
+                    id = m.getString("id"), name = m.getString("name"), lat = m.getDouble("lat"), lng = m.getDouble("lng"),
+                    address = "", source = "Islam-Landkarte", category = m.optString("cat", "Gebetsraum / Verein")
+                )
+            }
+        } catch (e: Exception) {
+            landkarte = emptyList()
+        }
+    }
+
+    /** Einmal im Monat neu laden. */
+    fun landkarteNeedsRefresh(ctx: Context): Boolean {
+        listAll(ctx)
+        return System.currentTimeMillis() - lkAt > 30L * 24 * 3600_000L || landkarte.isNullOrEmpty()
+    }
+
+    fun refreshLandkarte(ctx: Context, cb: (Boolean) -> Unit) {
+        if (lkLoading) return
+        lkLoading = true
+        val app = ctx.applicationContext
+        val main = Handler(Looper.getMainLooper())
+        Thread {
+            val out = ArrayList<Mosque>()
+            var anyOk = false
+            val urls = try {
+                app.assets.open("landkarte_urls.txt").bufferedReader().readLines().filter { it.startsWith("http") }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            for (u in urls) {
+                try {
+                    val html = httpGet(u, browser = true)
+                    val json = Regex("(?s)var\\s+locations\\s*=\\s*(\\[.*?]);").find(html)?.groupValues?.get(1) ?: continue
+                    val arr = JSONArray(json)
+                    anyOk = true
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        val la = o.optDouble("lat", 0.0)
+                        val lo = o.optDouble("lng", 0.0)
+                        if (la < 46.0 || la > 49.2 || lo < 9.3 || lo > 17.3) continue // außerhalb Österreichs / ungültig
+                        if (la == 48.0 && lo == 16.0) continue
+                        val name = o.optString("title").trim()
+                        if (name.isBlank() || lkExclude.containsMatchIn(name)) continue
+                        val cat = if (lkMosque.containsMatchIn(name) && !name.contains("Gebetsraum", true)) "Moschee" else "Gebetsraum / Verein"
+                        out.add(Mosque("lk-" + o.optInt("id"), name, la, lo, "", source = "Islam-Landkarte", category = cat))
+                    }
+                } catch (e: Exception) {
+                }
+            }
+            if (anyOk) {
+                val arr = JSONArray()
+                out.forEach {
+                    arr.put(JSONObject().put("id", it.id).put("name", it.name).put("lat", it.lat).put("lng", it.lng).put("cat", it.category))
+                }
+                try {
+                    lkFile(app).writeText(JSONObject().put("at", System.currentTimeMillis()).put("items", arr).toString())
+                } catch (e: Exception) {
+                }
+                lkAt = System.currentTimeMillis()
+                landkarte = out
+            }
+            lkLoading = false
+            main.post { cb(anyOk) }
+        }.start()
+    }
+
+    // ---------------- Adressen nachschlagen (OpenStreetMap, gespeichert) ----------------
+
+    private fun loadAddr(ctx: Context) {
+        val m = HashMap<String, String>()
+        try {
+            val f = addrFile(ctx)
+            if (f.exists()) {
+                val o = JSONObject(f.readText())
+                o.keys().forEach { k -> m[k] = o.getString(k) }
+            }
+        } catch (e: Exception) {
+        }
+        addrCache = m
+    }
+
+    /** Adresse zu einer Position (Straße Hausnummer, PLZ Ort) – wird gespeichert. */
+    fun lookupAddress(ctx: Context, m: Mosque): String? {
+        listAll(ctx)
+        addrCache?.get(m.id)?.let { return it }
+        return try {
+            val o = JSONObject(
+                httpGet(
+                    "https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=" +
+                        "%.6f".format(Locale.US, m.lat) + "&lon=" + "%.6f".format(Locale.US, m.lng)
+                )
+            )
+            val a = o.optJSONObject("address") ?: return null
+            val street = listOf(a.optString("road"), a.optString("house_number")).filter { it.isNotBlank() }.joinToString(" ")
+            val city = listOf(a.optString("postcode"), a.optString("city").ifBlank { a.optString("town").ifBlank { a.optString("village") } })
+                .filter { it.isNotBlank() }.joinToString(" ")
+            val res = listOf(street, city).filter { it.isNotBlank() }.joinToString(", ")
+            if (res.isBlank()) return null
+            addrCache?.put(m.id, res)
+            val json = JSONObject()
+            addrCache?.forEach { (k, v) -> json.put(k, v) }
+            addrFile(ctx).writeText(json.toString())
+            res
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Position einer Moschee korrigieren (für fremde Einträge wird eine eigene Kopie angelegt). */
@@ -533,6 +690,7 @@ object Mosques {
     fun countOsm(): Int = osm?.size ?: 0
     fun countOwn(): Int = own?.size ?: 0
     fun countMawaqit(): Int = mawaqit?.size ?: 0
+    fun countLandkarte(): Int = landkarte?.size ?: 0
 
     /** Fehlerart des letzten Ladeversuchs: "offline" oder "busy". */
     @Volatile
