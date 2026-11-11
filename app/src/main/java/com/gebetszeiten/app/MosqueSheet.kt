@@ -508,8 +508,7 @@ private fun MosqueDetail(
                 Places.delete(ctx, m.id)
                 onHide(m)
             }
-            return@Column
-        }
+        } else {
         EntrancePhoto(m.id)
         if (hasTimes(m)) {
             // dieselbe (aktuelle) Position wie in der Liste – sonst passen Entfernung und Zeit nicht zusammen
@@ -725,6 +724,7 @@ private fun MosqueDetail(
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Txt(t("hide"), 15, color = p.sub, modifier = Modifier.tap { onHide(m) }.padding(vertical = 8.dp))
             Txt(t("report"), 15, color = Color(0xFFFF3B30), modifier = Modifier.tap { onReport(m) }.padding(vertical = 8.dp))
+        }
         }
     }
 }

@@ -48,17 +48,16 @@ object NameFmt {
         if (full.contains("Türkisch-islamische", true) && full.contains("Zusammenarbeit", true)) {
             val loc = Regex("(?i)zusammenarbeit\\s*(in|im)?\\s*(.*)$").find(full)?.groupValues?.get(2)?.let { clean(it) }.orEmpty()
             val paren = Regex("\\(([^)]*)\\)").find(full)?.groupValues?.get(1)?.let { clean(it) }
-            name = when {
+            val atib: String = when {
                 paren != null && paren.contains("ATIB", true) -> paren
                 loc.isNotBlank() -> "ATIB " + loc.replace(Regex("(?i)\\(.*\\)"), "").trim()
                 else -> "ATIB"
             }
-            return name to "Verein"
+            return atib to "Verein"
         }
         // 2) Name in Anführungszeichen
-        Regex("[\"„“”']([^\"„“”']{2,40})[\"„“”']").find(full)?.groupValues?.get(1)?.let { q ->
-            if (!q.contains("Moschee -", true)) name = clean(q)
-        }
+        val quoted = Regex("[\"„“”']([^\"„“”']{2,40})[\"„“”']").find(full)?.groupValues?.get(1)
+        if (quoted != null && !quoted.contains("Moschee -", true)) name = clean(quoted)
         // 3) Kurzer Name in Klammern, z. B. (Mohajerin), (= Baiytul Muhtadin), (Al Taqwa)
         if (name == null) {
             val parens = Regex("\\(([^)]{2,40})\\)").findAll(full).map { clean(it.groupValues[1].removePrefix("=").trim()) }.toList()
@@ -70,7 +69,9 @@ object NameFmt {
         }
         // 4) „… Moschee“ am Ende eines langen Vereinsnamens
         if (name == null) {
-            Regex("(?i)([A-ZÄÖÜa-zäöüß'\\-]+(?:\\s+[A-ZÄÖÜa-zäöüß'\\-]+)?\\s+(Moschee|Camii|Mescid|Masjid))\\s*$").find(full)?.let {
+            val endM = Regex("(?i)([A-ZÄÖÜa-zäöüß'\\-]+(?:\\s+[A-ZÄÖÜa-zäöüß'\\-]+)?\\s+(Moschee|Camii|Mescid|Masjid))\\s*$").find(full)
+            if (endM != null) {
+                val it = endM
                 if (full.length > it.value.length + 10) {
                     val stop = setOf("österreich", "wien", "in", "der", "die", "das", "kultur", "islamischen", "islamische", "e.v.")
                     val words = clean(it.groupValues[1]).split(" ").toMutableList()
@@ -84,13 +85,13 @@ object NameFmt {
         }
         // 5) Islamische Föderation X → X
         if (name == null) {
-            Regex("(?i)^Islamische Föderation\\s+(.+)$").find(full)?.let { name = clean(it.groupValues[1]) }
+            val fed = Regex("(?i)^Islamische Föderation\\s+(.+)$").find(full)
+            if (fed != null) name = clean(fed.groupValues[1])
         }
         // 6) Moschee am Anfang behalten, Vereinszusatz abschneiden: „As-Sunna Moschee VSC-Kulturverein“
         if (name == null) {
-            Regex("(?i)^(.{2,40}?\\s(Moschee|Camii|Mescid|Masjid|Dzemat|Džemat))\\b").find(full)?.let {
-                if (full.length > it.value.length + 6) name = clean(it.groupValues[1])
-            }
+            val st = Regex("(?i)^(.{2,40}?\\s(Moschee|Camii|Mescid|Masjid|Dzemat|Džemat))\\b").find(full)
+            if (st != null && full.length > st.value.length + 6) name = clean(st.groupValues[1])
         }
         val n = name ?: clean(full)
         // Art nicht doppelt anzeigen
