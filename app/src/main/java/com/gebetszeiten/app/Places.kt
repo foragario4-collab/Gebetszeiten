@@ -34,6 +34,22 @@ object Places {
     fun entranceFile(ctx: Context, mosqueId: String) =
         File(File(ctx.filesDir, "eingang").also { it.mkdirs() }, mosqueId.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".jpg")
 
+    private fun safe(id: String) = id.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+
+    /** Alle Fotos einer Moschee (inkl. früherem einzelnen Eingangsfoto), älteste zuerst. */
+    fun mosquePhotos(ctx: Context, mosqueId: String): List<File> {
+        val out = ArrayList<File>()
+        entranceFile(ctx, mosqueId).takeIf { it.exists() }?.let { out.add(it) }
+        val dir = File(File(ctx.filesDir, "eingang"), safe(mosqueId))
+        dir.listFiles()?.filter { it.extension == "jpg" }?.sortedBy { it.name }?.let { out.addAll(it) }
+        return out
+    }
+
+    fun newMosquePhoto(ctx: Context, mosqueId: String): File {
+        val dir = File(File(ctx.filesDir, "eingang"), safe(mosqueId)).also { it.mkdirs() }
+        return File(dir, "foto_${System.currentTimeMillis()}.jpg")
+    }
+
     fun list(ctx: Context): List<Place> {
         if (items == null) load(ctx)
         return items ?: emptyList()

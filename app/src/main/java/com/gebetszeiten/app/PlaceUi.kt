@@ -126,7 +126,7 @@ fun AddPlaceDialog(kind0: String, lat: Double, lng: Double, onClose: () -> Unit,
     val id = remember { "pl-" + System.currentTimeMillis() }
     val camera = rememberCamera(
         dest = { File(Places.photoDir(ctx), "${id}_${System.currentTimeMillis()}.jpg") },
-        onSaved = { f -> if (photos.size < 5) photos.add(f.path) }
+        onSaved = { f -> if (photos.size < 10) photos.add(f.path) }
     )
     val canSave = photos.size >= 2 && name.isNotBlank()
 
@@ -142,7 +142,7 @@ fun AddPlaceDialog(kind0: String, lat: Double, lng: Double, onClose: () -> Unit,
         Txt(t("photos_n", photos.size), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             photos.forEach { ph -> PhotoThumb(ph, 72.dp, 72.dp) { viewer = ph } }
-            if (photos.size < 5) {
+            if (photos.size < 10) {
                 Box(
                     Modifier.size(72.dp).clip(RoundedCornerShape(12.dp))
                         .border(2.dp, p.line, RoundedCornerShape(12.dp)).tap { camera() },
@@ -152,9 +152,9 @@ fun AddPlaceDialog(kind0: String, lat: Double, lng: Double, onClose: () -> Unit,
         }
         Box(
             Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
-                .background(if (photos.size < 5) Color(0xFF007AFF) else p.fill).tap(enabled = photos.size < 5) { camera() },
+                .background(if (photos.size < 10) Color(0xFF007AFF) else p.fill).tap(enabled = photos.size < 10) { camera() },
             contentAlignment = Alignment.Center
-        ) { Txt(t("take_photo"), 15, FontWeight.SemiBold, if (photos.size < 5) Color.White else p.sub) }
+        ) { Txt(t("take_photo"), 15, FontWeight.SemiBold, if (photos.size < 10) Color.White else p.sub) }
         Txt(t("photo_hint"), 12, color = p.sub, modifier = Modifier.padding(horizontal = 4.dp))
 
         Field(t("name"), name) { name = it }
@@ -204,30 +204,33 @@ fun PlaceDetailContent(ctx: Context, pl: Place, onDelete: () -> Unit) {
     viewer?.let { PhotoViewer(it) { viewer = null } }
 }
 
-/** Eingangsfoto einer Moschee (anzeigen und aufnehmen). */
+/** Fotos einer Moschee: vom Eingang bis zum Gebetsraum, bis zu 10 (anzeigen und aufnehmen). */
 @Composable
 fun EntrancePhoto(mosqueId: String) {
     val ctx = LocalContext.current
     val p = LocalPal.current
     var version by remember(mosqueId) { mutableStateOf(0) }
     var viewer by remember { mutableStateOf<String?>(null) }
-    val file = remember(mosqueId, version) { Places.entranceFile(ctx, mosqueId) }
-    val camera = rememberCamera(dest = { Places.entranceFile(ctx, mosqueId) }, onSaved = { version++ })
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (file.exists()) {
+    val photos = remember(mosqueId, version) { Places.mosquePhotos(ctx, mosqueId) }
+    val camera = rememberCamera(dest = { Places.newMosquePhoto(ctx, mosqueId) }, onSaved = { version++ })
+    Txt(t("mosque_photos", photos.size), 12, color = p.sub, modifier = Modifier.padding(start = 4.dp))
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        photos.forEachIndexed { i, f ->
             Box {
-                androidx.compose.runtime.key(version) { PhotoThumb(file.path, 120.dp, 80.dp) { viewer = file.path } }
-                Txt(t("entrance"), 11, FontWeight.SemiBold, Color.White, Modifier.align(Alignment.BottomStart).padding(6.dp))
+                androidx.compose.runtime.key(f.path, version) { PhotoThumb(f.path, 120.dp, 80.dp) { viewer = f.path } }
+                if (i == 0) Txt(t("entrance"), 11, FontWeight.SemiBold, Color.White, Modifier.align(Alignment.BottomStart).padding(6.dp))
             }
         }
-        Column(
-            Modifier.size(120.dp, 80.dp).clip(RoundedCornerShape(12.dp)).border(2.dp, p.line, RoundedCornerShape(12.dp))
-                .tap { camera() },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Txt("+", 20, color = Color(0xFF007AFF))
-            Txt(t("entrance_add"), 12, FontWeight.SemiBold, Color(0xFF007AFF))
+        if (photos.size < 10) {
+            Column(
+                Modifier.size(120.dp, 80.dp).clip(RoundedCornerShape(12.dp)).border(2.dp, p.line, RoundedCornerShape(12.dp))
+                    .tap { camera() },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Txt("+", 20, color = Color(0xFF007AFF))
+                Txt(if (photos.isEmpty()) t("entrance_add") else t("photo_more"), 12, FontWeight.SemiBold, Color(0xFF007AFF))
+            }
         }
     }
     viewer?.let { PhotoViewer(it) { viewer = null } }

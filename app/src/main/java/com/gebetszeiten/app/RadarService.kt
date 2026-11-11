@@ -213,9 +213,6 @@ class RadarService : Service(), LocationListener {
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
     }
 
-    override fun onProviderEnabled(provider: String) {}
-    override fun onProviderDisabled(provider: String) {}
-
     override fun onDestroy() {
         handler.removeCallbacks(tick)
         try {
