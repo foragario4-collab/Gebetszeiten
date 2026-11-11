@@ -143,8 +143,10 @@ fun BoxScope.MosqueBottomSheet(
     onRemove: (Mosque) -> Unit,
     onUpdated: (Mosque) -> Unit,
     onHide: (Mosque) -> Unit = {},
-    onReport: (Mosque) -> Unit = {}
+    onReport: (Mosque) -> Unit = {},
+    onReload: () -> Unit = {}
 ) {
+    val ctx = LocalContext.current
     val p = LocalPal.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -169,6 +171,30 @@ fun BoxScope.MosqueBottomSheet(
         routeSec = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             Routing.durations(lat, lng, near, mode)
         }
+    }
+    // Adressen (und fehlende Zeiten) für die nächsten Orte im Hintergrund nachladen
+    val addrs = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    LaunchedEffect(mosques.size, (lat * 200).toInt(), (lng * 200).toInt()) {
+        val near = mosques.filter { !Places.isPlace(it) }
+            .sortedBy { Mosques.distance(lat, lng, it.lat, it.lng) }.take(15)
+        for (m in near) {
+            if (m.address.isNotBlank() || addrs.containsKey(m.id)) continue
+            val a = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Mosques.lookupAddress(ctx, m) }
+            if (!a.isNullOrBlank()) addrs[m.id] = a
+            kotlinx.coroutines.delay(1100) // Regeln der Adresssuche: höchstens 1 Anfrage pro Sekunde
+        }
+        var found = false
+        for (m in near.take(8)) {
+            if (hasTimes(m) || !Mosques.shouldAutoFind(ctx, m.id)) continue
+            val d = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try { Mosques.findTimes(m) } catch (e: Exception) { null }
+            }
+            if (d != null && (d.adhan.isNotEmpty() || d.iqamah.isNotEmpty())) {
+                Mosques.attachLink(ctx, m, d)
+                found = true
+            }
+        }
+        if (found) onReload()
     }
     val sorted = remember(mosques, lat, lng, sortMode, now / 60_000L) {
         val byDist = mosques.distinctBy { it.id }
@@ -236,10 +262,18 @@ fun BoxScope.MosqueBottomSheet(
                         )
                         if (expanded) Txt(t("count_split", mCount, oCount), 13, color = p.sub, maxLines = 1)
                     } else {
-                        Txt(selected.name, 18, FontWeight.Bold, maxLines = 2)
+                        Txt(NameFmt.name(selected.name), 18, FontWeight.Bold, maxLines = 2)
                         val d = Mosques.distance(lat, lng, selected.lat, selected.lng)
                         Txt(
-                            listOf(if (selected.category == "Moschee") t("cat_mosque") else t("cat_room"), selected.address, Mosques.fmtDist(d)).filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(
+                                when (selected.category) {
+                                    "Moschee" -> NameFmt.type(selected.name).ifBlank { t("cat_mosque") }
+                                    Places.CAT_PRAYER -> t("kind_prayer")
+                                    Places.CAT_WUDU -> t("kind_wudu")
+                                    else -> NameFmt.type(selected.name).ifBlank { t("cat_room") }
+                                },
+                                if (Places.isPlace(selected)) "" else Bezirk.label(selected.address), Mosques.fmtDist(d)
+                            ).filter { it.isNotBlank() }.joinToString(" · "),
                             13, color = p.sub, maxLines = 2
                         )
                     }
@@ -290,20 +324,38 @@ fun BoxScope.MosqueBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(
-                            Modifier.size(38.dp).clip(CircleShape)
-                                .background(if (m.category == "Moschee") Color(0xFF13917C) else Color(0xFF5E9C8F)),
-                            contentAlignment = Alignment.Center
-                        ) { Txt(if (m.category == "Moschee") "☪" else "◆", 16, color = Color.White) }
+                        KindIcon(m.category, 38.dp)
                         Column(Modifier.weight(1f)) {
-                            Txt(m.name, 15, FontWeight.SemiBold, maxLines = 1)
+                            val ty = NameFmt.type(m.name)
+                            val adr = if (Places.isPlace(m)) "" else (m.address.ifBlank { addrs[m.id].orEmpty() })
+                            androidx.compose.material3.Text(
+                                androidx.compose.ui.text.buildAnnotatedString {
+                                    withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold, color = p.text)) {
+                                        append(NameFmt.name(m.name))
+                                    }
+                                    if (ty.isNotBlank()) withStyle(androidx.compose.ui.text.SpanStyle(color = p.sub, fontSize = 13.sp)) {
+                                        append("  ·  $ty")
+                                    }
+                                },
+                                fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            if (adr.isNotBlank()) Txt(Bezirk.label(adr), 12, color = p.sub, maxLines = 1)
                             if (niq != null) {
                                 CountLine(niq.first.title, niq.second, niq.first.day, now, p.accentText)
                                 CountLine(t("iqamah"), Fmt.time(niq.third), null, now, p.text, absMs = niq.third)
                             } else if (nx != null) {
                                 Txt("${nx.first} ${nx.second} · ${t("iqamah")} ${nx.third ?: "–"}", 13, FontWeight.SemiBold, p.accentText, maxLines = 1)
                             } else {
-                                Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
+                                if (Places.isPlace(m)) {
+                                    Txt(
+                                        (if (m.category == Places.CAT_WUDU) t("kind_wudu") else t("kind_prayer")) +
+                                            (if (m.address.isNotBlank()) " · " + m.address else ""),
+                                        13, FontWeight.SemiBold,
+                                        if (m.category == Places.CAT_WUDU) Color(0xFF0A84FF) else Color(0xFF5E5CE6), maxLines = 1
+                                    )
+                                } else {
+                                    Txt(t("no_times"), 13, FontWeight.Medium, p.sub, maxLines = 1)
+                                }
                             }
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -407,6 +459,7 @@ private fun MosqueDetail(
             .padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (NameFmt.changed(m.name)) Txt(m.name, 12, color = p.sub)
         // Teilen · Adresse kopieren · Suchen · Route
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val addrText = listOf(m.name, addr).filter { it.isNotBlank() }.joinToString(", ")
@@ -448,6 +501,16 @@ private fun MosqueDetail(
                 }
             }
         }
+        // Gebets-/Wudu-Platz: Fotos, Uhrzeiten, Angaben statt Gebetszeiten
+        val place = Places.get(ctx, m.id)
+        if (place != null) {
+            PlaceDetailContent(ctx, place) {
+                Places.delete(ctx, m.id)
+                onHide(m)
+            }
+            return@Column
+        }
+        EntrancePhoto(m.id)
         if (hasTimes(m)) {
             // dieselbe (aktuelle) Position wie in der Liste – sonst passen Entfernung und Zeit nicht zusammen
             val dist = Mosques.distance(myLat, myLng, m.lat, m.lng)

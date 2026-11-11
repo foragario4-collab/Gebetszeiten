@@ -26,11 +26,24 @@ object Notifs {
     fun prayerId(k: Kind) = 100 + k.ordinal
     fun remindId(k: Kind) = 200 + k.ordinal
 
+    /** Eingebaute Töne (res/raw). „system“ = Standard-Ton des Handys. */
+    val TONES = listOf("system", "ton_gong", "ton_glocke", "ton_harfe", "ton_tropfen", "ton_morgen", "ton_kristall")
+
+    fun toneUri(ctx: Context, id: String): android.net.Uri =
+        if (id == "system") RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$id")
+
+    /** Kanal je Ton (Android erlaubt keinen Tonwechsel an einem bestehenden Kanal). */
+    fun prayerChannel(): String = if (Prefs.tone == "system") CH_PRAYER else CH_PRAYER + "_" + Prefs.tone
+
     fun channels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
-        val prayer = NotificationChannel(CH_PRAYER, t("ch_prayer"), NotificationManager.IMPORTANCE_HIGH).apply {
+        // alte Ton-Kanäle eines anderen Tons entfernen
+        nm.notificationChannels.filter { it.id.startsWith(CH_PRAYER + "_") && it.id != prayerChannel() }
+            .forEach { nm.deleteNotificationChannel(it.id) }
+        val prayer = NotificationChannel(prayerChannel(), t("ch_prayer"), NotificationManager.IMPORTANCE_HIGH).apply {
             setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                toneUri(ctx, Prefs.tone),
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
             )
             enableLights(true)
@@ -98,7 +111,7 @@ object Notifs {
         if (mode == 2 && uri != null && ev.kind.prayer) {
             if (AdhanService.start(ctx, uri, ev)) return
         }
-        nm.notify(prayerId(ev.kind), buildPrayer(ctx, ev, CH_PRAYER))
+        nm.notify(prayerId(ev.kind), buildPrayer(ctx, ev, prayerChannel()))
     }
 
     const val ACTION_MOSQUE = "com.gebetszeiten.app.MOSQUE_REMIND"

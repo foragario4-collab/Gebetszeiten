@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,11 @@ object Glyph {
     const val COPY = "M9 9h11v11H9zM5 15H4V4h11v1"
     const val SEARCH = "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20"
     const val ROUTE = "M3 11l18-8-8 18-2-8z"
+    // Karten-Symbole (24er Raster): Moschee M10, Gebetsraum G4, Wudu W2
+    const val MOSQUE = "M12 3c1 2 6 4 6 9H6c0-5 5-7 6-9zM4 12h16v9H4zM1.5 8h2v13h-2zM1.5 8l1-4 1 4z"
+    const val PRAYER_LINE = "M4 22V10a8 8 0 0 1 16 0v12"
+    const val PRAYER_FILL = "M9 22v-7a3 3 0 0 1 6 0v7z"
+    const val WUDU = "M4 8h9a3 3 0 0 1 3 3v2h-3v-2H4zM6 5h4v3H6zM14.5 16c1.4 2 2.2 3.2 2.2 4.2a2.2 2.2 0 0 1-4.4 0c0-1 0.8-2.2 2.2-4.2z"
     const val WALK = "M12.4 7.2c.9-.3 1.9.1 2.3 1l1.3 2.7 2.4 1.1a1.1 1.1 0 0 1-.9 2l-2.8-1.3a1.6 1.6 0 0 1-.8-.8l-.5-1-1 4 2.4 2.6c.2.2.3.5.3.8v3.5a1.1 1.1 0 0 1-2.2 0v-3.1l-2.5-2.6-1.1 4.2a1.1 1.1 0 0 1-2.1-.5l2.2-8.8-1.6.9-.9 2.6a1.1 1.1 0 0 1-2-.7l1-3a1.6 1.6 0 0 1 .7-.9z"
 }
 
@@ -60,6 +66,39 @@ fun GlyphIcon(path: String, color: Color, size: Dp = 20.dp) {
                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                 )
             )
+        }
+    }
+}
+
+
+/** Symbol je Art: Moschee (M10), Gebetsraum (G4), Wudu (W2) – weiß auf farbigem Kreis. */
+@Composable
+fun KindIcon(category: String, size: Dp = 34.dp) {
+    val (bg, kind) = when (category) {
+        Places.CAT_WUDU -> Color(0xFF0A84FF) to 2
+        Places.CAT_PRAYER -> Color(0xFF5E5CE6) to 1
+        "Moschee" -> Color(0xFF13917C) to 0
+        else -> Color(0xFF5E5CE6) to 1   // Gebetsraum / Verein
+    }
+    val mosque = remember { PathParser().parsePathString(Glyph.MOSQUE).toPath() }
+    val pLine = remember { PathParser().parsePathString(Glyph.PRAYER_LINE).toPath() }
+    val pFill = remember { PathParser().parsePathString(Glyph.PRAYER_FILL).toPath() }
+    val wudu = remember { PathParser().parsePathString(Glyph.WUDU).toPath() }
+    Canvas(Modifier.size(size)) {
+        drawCircle(bg)
+        val g = this.size.width * 0.58f
+        val off = (this.size.width - g) / 2f
+        translate(off, off) {
+            scale(g / 24f, g / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                when (kind) {
+                    0 -> drawPath(mosque, Color.White)
+                    1 -> {
+                        drawPath(pLine, Color.White, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.2f))
+                        drawPath(pFill, Color.White)
+                    }
+                    else -> drawPath(wudu, Color.White)
+                }
+            }
         }
     }
 }

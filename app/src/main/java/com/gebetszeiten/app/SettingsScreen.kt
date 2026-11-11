@@ -261,6 +261,27 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             }
         }
 
+        // ---------- Töne ----------
+        var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { player?.release() } }
+        Section(t("sec_tone"), footer = t("tone_footer")) {
+            Notifs.TONES.forEachIndexed { i, id ->
+                CheckRow(t("tone_$id"), Prefs.tone == id, first = i == 0) {
+                    player?.release()
+                    player = try {
+                        android.media.MediaPlayer.create(ctx, Notifs.toneUri(ctx, id))?.apply { start() }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (Prefs.tone != id) {
+                        Prefs.tone = id
+                        Notifs.channels(ctx)
+                        changed()
+                    }
+                }
+            }
+        }
+
         // ---------- Adhan ----------
         Section(t("sec_adhan"), footer = t("adhan_footer")) {
             ValueRow(t("adhan_file"), Prefs.adhanName ?: t("none_chosen"), first = true) { pickAdhan.launch(arrayOf("audio/*")) }
@@ -402,7 +423,7 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
             val next = Times.around(now).first { it.at > now && it.kind.prayer }
             ButtonRow(t("t_prayer"), first = true) {
                 val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
-                nm?.notify(Notifs.prayerId(next.kind), Notifs.buildPrayer(ctx, next.copy(at = System.currentTimeMillis()), Notifs.CH_PRAYER))
+                nm?.notify(Notifs.prayerId(next.kind), Notifs.buildPrayer(ctx, next.copy(at = System.currentTimeMillis()), Notifs.prayerChannel()))
             }
             ButtonRow(t("t_remind")) {
                 Notifs.reminder(ctx, next.copy(at = System.currentTimeMillis() + 15 * 60_000L))

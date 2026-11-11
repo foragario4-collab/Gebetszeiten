@@ -35,6 +35,7 @@ import androidx.compose.ui.window.DialogProperties
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -102,7 +103,8 @@ private const val STYLE_LIGHT = "https://tiles.openfreemap.org/styles/liberty"
 private const val STYLE_DARK = "https://tiles.openfreemap.org/styles/dark"
 
 /** Moschee-Symbol für die Karte (grüner Kreis mit Kuppel). */
-private fun mosqueIcon(ctx: Context, selected: Boolean): Bitmap {
+/** Karten-Pin: 0 = Moschee (grün, Kuppel), 1 = Gebetsplatz (lila, Teppich), 2 = Wudu (blau, Tropfen). */
+private fun mosqueIcon(ctx: Context, selected: Boolean, kind: Int = 0): Bitmap {
     val d = ctx.resources.displayMetrics.density
     val size = ((if (selected) 44 else 34) * d).toInt()
     val h = (size * 1.25f).toInt()
@@ -110,29 +112,41 @@ private fun mosqueIcon(ctx: Context, selected: Boolean): Bitmap {
     val c = android.graphics.Canvas(bmp)
     val p = Paint(Paint.ANTI_ALIAS_FLAG)
     val r = size / 2f
-    val green = if (selected) 0xFF0B6E5F.toInt() else 0xFF13917C.toInt()
-    // Spitze
+    val col = when (kind) {
+        1 -> if (selected) 0xFF4B49C9.toInt() else 0xFF5E5CE6.toInt()
+        2 -> if (selected) 0xFF0066CC.toInt() else 0xFF0A84FF.toInt()
+        else -> if (selected) 0xFF0B6E5F.toInt() else 0xFF13917C.toInt()
+    }
     val tip = android.graphics.Path().apply {
         moveTo(r - size * 0.18f, size * 0.85f)
         lineTo(r + size * 0.18f, size * 0.85f)
         lineTo(r, h.toFloat() - 1f)
         close()
     }
-    p.color = green
+    p.color = col
     c.drawPath(tip, p)
     p.color = 0xFFFFFFFF.toInt()
     c.drawCircle(r, r, r - 1f, p)
-    p.color = green
+    p.color = col
     c.drawCircle(r, r, r - 2.5f * d, p)
-    // Kuppel
+    // Symbol (24er Raster) mittig, weiß: Moschee M10, Gebetsraum G4, Wudu W2
     p.color = 0xFFFFFFFF.toInt()
-    val s = size * 0.5f
-    val left = r - s / 2f
-    val top = r - s / 2f
-    c.drawArc(left + s * 0.12f, top + s * 0.1f, left + s * 0.88f, top + s * 0.86f, 180f, 180f, true, p)
-    c.drawRect(left + s * 0.12f, top + s * 0.47f, left + s * 0.88f, top + s * 0.86f, p)
-    c.drawRect(left, top + s * 0.86f, left + s, top + s * 0.98f, p)
-    c.drawRect(r - s * 0.04f, top - s * 0.06f, r + s * 0.04f, top + s * 0.14f, p)
+    val g = size * 0.56f
+    c.save()
+    c.translate(r - g / 2f, r - g / 2f)
+    c.scale(g / 24f, g / 24f)
+    when (kind) {
+        1 -> {
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = 2.2f
+            c.drawPath(androidx.core.graphics.PathParser.createPathFromPathData(Glyph.PRAYER_LINE), p)
+            p.style = Paint.Style.FILL
+            c.drawPath(androidx.core.graphics.PathParser.createPathFromPathData(Glyph.PRAYER_FILL), p)
+        }
+        2 -> c.drawPath(androidx.core.graphics.PathParser.createPathFromPathData(Glyph.WUDU), p)
+        else -> c.drawPath(androidx.core.graphics.PathParser.createPathFromPathData(Glyph.MOSQUE), p)
+    }
+    c.restore()
     return bmp
 }
 
@@ -158,6 +172,22 @@ private fun setupStyle(ctx: Context, map: MapLibreMap, style: Style, mosques: Li
     style.addImage("mosque_sel", mosqueIcon(ctx, true))
     style.addSource(GeoJsonSource("mosques", features(mosques)))
     style.addSource(GeoJsonSource("mosque_sel", FeatureCollection.fromFeatures(emptyList())))
+    style.addImage("prayer", mosqueIcon(ctx, false, 1))
+    style.addImage("wudu", mosqueIcon(ctx, false, 2))
+    style.addImage("prayer_sel", mosqueIcon(ctx, true, 1))
+    style.addImage("wudu_sel", mosqueIcon(ctx, true, 2))
+    style.addSource(GeoJsonSource("prayer", FeatureCollection.fromFeatures(emptyList())))
+    style.addSource(GeoJsonSource("wudu", FeatureCollection.fromFeatures(emptyList())))
+    listOf("prayer", "wudu").forEach { k ->
+        style.addLayer(
+            SymbolLayer("$k-layer", k).withProperties(
+                PropertyFactory.iconImage(k),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM)
+            )
+        )
+    }
     style.addLayer(
         SymbolLayer("mosques-layer", "mosques").withProperties(
             PropertyFactory.iconImage("mosque"),
@@ -197,7 +227,18 @@ fun MapScreen(v: Int) {
     var myLng by remember { mutableDoubleStateOf(Prefs.lng) }
 
     // ---------- Moscheen ----------
-    var mosques by remember { mutableStateOf(Mosques.list(ctx)) }
+    var mosques by remember { mutableStateOf(allPlaces(ctx)) }
+    val visible = remember(mosques, v) {
+        mosques.filter {
+            when (it.category) {
+                "Moschee" -> Prefs.showMosques
+                Places.CAT_WUDU -> Prefs.showWudu
+                else -> Prefs.showPrayer
+            }
+        }
+    }
+    var showAddPlace by remember { mutableStateOf<String?>(null) }
+    var chooseAdd by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Mosque?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -213,7 +254,7 @@ fun MapScreen(v: Int) {
     var reportFor by remember { mutableStateOf<Mosque?>(null) }
 
     fun reloadList() {
-        mosques = Mosques.list(ctx)
+        mosques = allPlaces(ctx)
         selected = selected?.let { s -> mosques.firstOrNull { it.id == s.id } }
     }
 
@@ -226,17 +267,17 @@ fun MapScreen(v: Int) {
                     Mosques.lastError == "offline" -> t("err_offline")
                     else -> t("err_busy")
                 }
-                mosques = Mosques.list(ctx)
+                mosques = allPlaces(ctx)
             }
         }
         // Islam-Landkarte (ganz Österreich), einmal im Monat
         if (force || Mosques.landkarteNeedsRefresh(ctx)) {
-            Mosques.refreshLandkarte(ctx) { mosques = Mosques.list(ctx) }
+            Mosques.refreshLandkarte(ctx) { mosques = allPlaces(ctx) }
         }
         // Mawaqit: Moscheen mit tagesaktuellen Zeiten (Adhan, Iqamah, Jumuah)
         if (force || Mosques.mawaqitNeedsRefresh(ctx, myLat, myLng)) {
             Mosques.refreshMawaqit(ctx, myLat, myLng) {
-                mosques = Mosques.list(ctx)
+                mosques = allPlaces(ctx)
                 selected = selected?.let { s -> mosques.firstOrNull { it.id == s.id } } ?: selected
             }
         }
@@ -270,11 +311,21 @@ fun MapScreen(v: Int) {
     }
 
     // Marker aktualisieren
-    LaunchedEffect(mosques, styleRef, selected) {
+    LaunchedEffect(visible, styleRef, selected) {
         val st = styleRef ?: return@LaunchedEffect
         try {
-            st.getSourceAs<GeoJsonSource>("mosques")?.setGeoJson(features(mosques.filter { it.id != selected?.id }))
-            st.getSourceAs<GeoJsonSource>("mosque_sel")?.setGeoJson(features(listOfNotNull(selected)))
+            val vis = visible.filter { it.id != selected?.id }
+            st.getSourceAs<GeoJsonSource>("mosques")?.setGeoJson(features(vis.filter { it.category == "Moschee" }))
+            st.getSourceAs<GeoJsonSource>("prayer")?.setGeoJson(features(vis.filter { it.category != "Moschee" && it.category != Places.CAT_WUDU }))
+            st.getSourceAs<GeoJsonSource>("wudu")?.setGeoJson(features(vis.filter { it.category == Places.CAT_WUDU }))
+            val sel = selected
+            val selImg = when (sel?.category) {
+                "Moschee" -> "mosque_sel"
+                Places.CAT_WUDU -> "wudu_sel"
+                else -> "prayer_sel"
+            }
+            st.getLayer("mosque-sel-layer")?.setProperties(PropertyFactory.iconImage(selImg))
+            st.getSourceAs<GeoJsonSource>("mosque_sel")?.setGeoJson(features(listOfNotNull(sel)))
         } catch (e: Exception) {
         }
     }
@@ -355,9 +406,9 @@ fun MapScreen(v: Int) {
                                     return@addOnMapClickListener true
                                 }
                                 val px = map.projection.toScreenLocation(point)
-                                val hit = map.queryRenderedFeatures(px, "mosques-layer", "mosque-sel-layer")
+                                val hit = map.queryRenderedFeatures(px, "mosques-layer", "mosque-sel-layer", "prayer-layer", "wudu-layer")
                                 val id = hit.firstOrNull()?.getStringProperty("id")
-                                selected = if (id != null) mosques.firstOrNull { it.id == id } ?: Mosques.list(c).firstOrNull { it.id == id } else null
+                                selected = if (id != null) mosques.firstOrNull { it.id == id } ?: allPlaces(c).firstOrNull { it.id == id } else null
                                 selected?.let { m ->
                                     map.animateCamera(CameraUpdateFactory.newLatLng(LatLng(m.lat, m.lng)))
                                 }
@@ -372,7 +423,7 @@ fun MapScreen(v: Int) {
             val busyText = if (locating) t("gps_searching") else null
             androidx.compose.animation.AnimatedVisibility(
                 visible = busyText != null,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 104.dp),
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically { -it },
                 exit = androidx.compose.animation.fadeOut()
             ) {
@@ -393,11 +444,24 @@ fun MapScreen(v: Int) {
                 }
             }
 
-            // Oben links: Radar
+            // Oben: Filter Moscheen / Gebetsplätze / Wudu
             Row(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(10.dp)
+                    .padding(start = 10.dp, top = 10.dp, end = 64.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(t("f_mosques"), Color(0xFF13917C), Prefs.showMosques) { Prefs.showMosques = it }
+                FilterChip(t("f_prayer"), Color(0xFF5E5CE6), Prefs.showPrayer) { Prefs.showPrayer = it }
+                FilterChip(t("f_wudu"), Color(0xFF0A84FF), Prefs.showWudu) { Prefs.showWudu = it }
+            }
+
+            // Radar
+            Row(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 10.dp, top = 56.dp)
                     .shadow(4.dp, RoundedCornerShape(14.dp))
                     .clip(RoundedCornerShape(14.dp))
                     .background(p.card.copy(alpha = 0.96f))
@@ -426,7 +490,7 @@ fun MapScreen(v: Int) {
                 Modifier.align(Alignment.TopEnd).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MapButton("+") { showAdd = true }
+                MapButton("+") { chooseAdd = true }
                 MapButton("➤") { locate(true) }
                 MapButton("↻") { load(true) }
             }
@@ -450,7 +514,7 @@ fun MapScreen(v: Int) {
                 }
             } else {
                 MosqueBottomSheet(
-                    mosques = mosques, selected = sel, lat = myLat, lng = myLng, now = now, status = status,
+                    mosques = visible, selected = sel, lat = myLat, lng = myLng, now = now, status = status,
                     onPick = { m ->
                         selected = m
                         mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(m.lat, m.lng), 14.5))
@@ -471,12 +535,30 @@ fun MapScreen(v: Int) {
                         selected = null
                         reloadList()
                     },
-                    onReport = { m -> reportFor = m }
+                    onReport = { m -> reportFor = m },
+                    onReload = { reloadList() }
                 )
             }
         }
     }
 
+    if (chooseAdd) {
+        ChoiceDialog(Choice(t("add_what"), listOf(t("add_mosque"), t("kind_prayer"), t("kind_wudu")), -1) { i ->
+            when (i) {
+                0 -> showAdd = true
+                1 -> showAddPlace = "prayer"
+                else -> showAddPlace = "wudu"
+            }
+        }) { chooseAdd = false }
+    }
+    showAddPlace?.let { k ->
+        AddPlaceDialog(k, myLat, myLng, onClose = { showAddPlace = null }) { pl ->
+            showAddPlace = null
+            if (pl.kind == "wudu") Prefs.showWudu = true else Prefs.showPrayer = true
+            reloadList()
+            selected = mosques.firstOrNull { it.id == pl.id }
+        }
+    }
     if (showAdd) {
         AddMosqueDialog(
             onClose = { showAdd = false },
@@ -891,5 +973,35 @@ private fun TimeField(label: String, digits: String, onChange: (String) -> Unit)
                 modifier = Modifier.width(110.dp)
             )
         }
+    }
+}
+
+
+/** Moscheen + selbst eingetragene Gebets- und Wudu-Plätze. */
+internal fun allPlaces(ctx: Context): List<Mosque> = Mosques.list(ctx) + Places.asMosques(ctx).filter { it.id !in Prefs.hiddenIds }
+
+@Composable
+private fun FilterChip(label: String, color: Color, on: Boolean, onChange: (Boolean) -> Unit) {
+    val p = LocalPal.current
+    Row(
+        Modifier
+            .shadow(4.dp, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (on) p.card else p.card.copy(alpha = 0.7f))
+            .tap(scale = 0.92f) { onChange(!on) }
+            .padding(start = 8.dp, end = 12.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(22.dp).clip(CircleShape).background(if (on) color else p.line), contentAlignment = Alignment.Center) {
+            if (on) KindIcon(
+                when (color) {
+                    Color(0xFF0A84FF) -> Places.CAT_WUDU
+                    Color(0xFF5E5CE6) -> Places.CAT_PRAYER
+                    else -> "Moschee"
+                }, 22.dp
+            )
+        }
+        Box(Modifier.size(6.dp))
+        Txt(label, 14, FontWeight.SemiBold, if (on) p.text else p.sub, maxLines = 1)
     }
 }

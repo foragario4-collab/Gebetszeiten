@@ -177,6 +177,21 @@ object Prefs {
         hiddenIds = hiddenIds + id
     }
 
+    var showMosques: Boolean
+        get() = sp.getBoolean("showMosques", true)
+        set(v) = edit { putBoolean("showMosques", v) }
+    var showPrayer: Boolean
+        get() = sp.getBoolean("showPrayer", true)
+        set(v) = edit { putBoolean("showPrayer", v) }
+    var showWudu: Boolean
+        get() = sp.getBoolean("showWudu", true)
+        set(v) = edit { putBoolean("showWudu", v) }
+
+    /** Gewählter Ton für Gebets-Mitteilungen */
+    var tone: String
+        get() = sp.getString("tone", "ton_gong") ?: "ton_gong"
+        set(v) = edit { putString("tone", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

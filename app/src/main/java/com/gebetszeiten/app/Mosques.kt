@@ -423,25 +423,7 @@ object Mosques {
             if (list.size == 6) list = list.filterIndexed { idx, _ -> idx != 1 }
             list.take(5).forEachIndexed { idx, v -> adhan[keys[idx]] = v }
         }
-        val iq = LinkedHashMap<String, String>()
-        val iqArr = o.optJSONArray("iqama") ?: o.optJSONArray("iqamaCalendar")
-        if (iqArr != null) {
-            for (idx in 0 until minOf(5, iqArr.length())) {
-                val raw = iqArr.optString(idx).trim()
-                val a = adhan[keys[idx]]
-                if (raw.matches(TIME)) {
-                    iq[keys[idx]] = raw
-                } else if (a != null && raw.trimStart('+').toIntOrNull() != null) {
-                    iq[keys[idx]] = addMin(a, raw.trimStart('+').toInt())
-                }
-            }
-        }
-        o.optJSONArray("fixedIqama")?.let { fx ->
-            for (idx in 0 until minOf(5, fx.length())) {
-                val raw = fx.optString(idx).trim()
-                if (raw.matches(TIME)) iq[keys[idx]] = raw
-            }
-        }
+        val iq = LinkedHashMap(mwIqamaToday(o, adhan))
         val jumua = o.optString("jumua").ifBlank { o.optString("jumua1") }
         if (jumua.matches(TIME)) adhan["JUMUAH"] = jumua
         val addr = listOf(o.optString("localisation"), o.optString("address"), o.optString("city"))
@@ -451,6 +433,76 @@ object Mosques {
             source = "Mawaqit", url = if (slug.isNotBlank()) "https://mawaqit.net/de/$slug" else null,
             adhan = adhan, iqamah = iq, fetchedAt = System.currentTimeMillis()
         )
+    }
+
+    /** Den versteckten Datenblock „confData = {…}“ einer Mawaqit-Seite als JSON lesen. */
+    private fun mwConf(html: String): JSONObject? {
+        val start = Regex("confData\\s*=\\s*\\{").find(html)?.let { it.range.last } ?: return null
+        var depth = 0
+        var inStr = false
+        var esc = false
+        for (i in start until html.length) {
+            val ch = html[i]
+            if (inStr) {
+                if (esc) esc = false
+                else if (ch == '\\') esc = true
+                else if (ch == '"') inStr = false
+                continue
+            }
+            when (ch) {
+                '"' -> inStr = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return try {
+                        JSONObject(html.substring(start, i + 1))
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Iqamah von heute aus Mawaqit-Daten:
+     * „iqamaCalendar“ = 12 Monate, je Tag 5 Werte („+15“ = 15 Min nach Adhan oder feste Uhrzeit),
+     * „fixedIqama“ = feste Uhrzeiten, die Vorrang haben.
+     */
+    private fun mwIqamaToday(o: JSONObject, adhan: Map<String, String>): Map<String, String> {
+        val keys = listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA")
+        val out = LinkedHashMap<String, String>()
+        val today = java.time.LocalDate.now()
+        val raw = ArrayList<String>()
+        o.optJSONArray("iqamaCalendar")?.let { cal ->
+            val month = cal.opt(today.monthValue - 1)
+            val day: Any? = when (month) {
+                is JSONObject -> month.opt(today.dayOfMonth.toString())
+                is JSONArray -> month.opt(today.dayOfMonth - 1) ?: month.opt(today.dayOfMonth)
+                else -> null
+            }
+            when (day) {
+                is JSONArray -> for (i in 0 until day.length()) raw.add(day.optString(i))
+                is String -> raw.addAll(day.split(","))
+            }
+        }
+        if (raw.isEmpty()) o.optJSONArray("iqama")?.let { a -> for (i in 0 until a.length()) raw.add(a.optString(i)) }
+        keys.forEachIndexed { i, k ->
+            val v = raw.getOrNull(i)?.trim().orEmpty()
+            val a = adhan[k]
+            when {
+                v.matches(TIME) -> out[k] = v.padStart(5, '0')
+                a != null && v.trimStart('+').toIntOrNull() != null -> out[k] = addMin(a, v.trimStart('+').toInt())
+            }
+        }
+        o.optJSONArray("fixedIqama")?.let { fx ->
+            for (i in 0 until minOf(5, fx.length())) {
+                val v = fx.optString(i).trim()
+                if (v.matches(TIME)) out[keys[i]] = v.padStart(5, '0')
+            }
+        }
+        return out
     }
 
     /** Mawaqit-Suche mit beliebigen Parametern (word=… oder lat=…&lon=…). */
@@ -690,6 +742,15 @@ object Mosques {
     fun countOsm(): Int = osm?.size ?: 0
     fun countOwn(): Int = own?.size ?: 0
     fun countMawaqit(): Int = mawaqit?.size ?: 0
+
+    /** Automatische Zeitsuche höchstens einmal am Tag pro Moschee. */
+    fun shouldAutoFind(ctx: Context, id: String): Boolean {
+        val sp = ctx.getSharedPreferences("autosuche", Context.MODE_PRIVATE)
+        val today = java.time.LocalDate.now().toString()
+        if (sp.getString(id, "") == today) return false
+        sp.edit().putString(id, today).apply()
+        return true
+    }
     fun countLandkarte(): Int = landkarte?.size ?: 0
 
     /** Fehlerart des letzten Ladeversuchs: "offline" oder "busy". */
@@ -916,6 +977,26 @@ object Mosques {
             ?: Regex("(?is)<h1[^>]*>(.*?)</h1>").find(html)?.groupValues?.get(1)?.let { strip(it) }
             ?: ""
         if (u.contains("mawaqit", ignoreCase = true)) {
+            mwConf(html)?.let { conf ->
+                val keys0 = listOf("FAJR", "DHUHR", "ASR", "MAGHRIB", "ISHA")
+                val adhan0 = LinkedHashMap<String, String>()
+                conf.optJSONArray("times")?.let { t ->
+                    var list = (0 until t.length()).map { t.optString(it) }.filter { it.matches(TIME) }
+                    if (list.size == 6) list = list.filterIndexed { i, _ -> i != 1 }
+                    list.take(5).forEachIndexed { i, v -> adhan0[keys0[i]] = v.padStart(5, '0') }
+                }
+                if (adhan0.isNotEmpty()) {
+                    val iq0 = LinkedHashMap(mwIqamaToday(conf, adhan0))
+                    val jum = conf.optString("jumua").ifBlank { conf.optString("jumua1") }
+                    if (jum.matches(TIME)) adhan0["JUMUAH"] = jum.padStart(5, '0')
+                    val nm = conf.optString("name").ifBlank { title.substringBefore(" | ").substringBefore(" - ") }.ifBlank { nameFromUrl(u) }
+                    val ad = conf.optString("localisation").ifBlank { conf.optString("address") }
+                    val la = conf.optDouble("latitude", Double.NaN).takeIf { !it.isNaN() }
+                    val lo = conf.optDouble("longitude", Double.NaN).takeIf { !it.isNaN() }
+                    lastFetchInfo = "OK, Mawaqit-Daten, Iqamah: ${iq0.size}"
+                    return Draft(nm, ad, la, lo, "Mawaqit", u, adhan0, iq0)
+                }
+            }
             fun f(key: String) = Regex("\"$key\"\\s*:\\s*\"(.*?)(?<!\\\\)\"").find(html)?.groupValues?.get(1)?.let { jsonStr(it) }
             fun n(key: String) = Regex("\"$key\"\\s*:\\s*(-?[0-9.]+)").find(html)?.groupValues?.get(1)?.toDoubleOrNull()
             val name = f("name")?.takeIf { it.isNotBlank() }

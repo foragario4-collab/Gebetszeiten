@@ -330,3 +330,40 @@ no_iq_hint	Adhan von {0} · keine Iqamah hinterlegt	Adhan from {0} · no Iqamah 
 hidden_places	Ausgeblendete Orte	Hidden places	Gizlenen yerler	Skrivena mjesta	Skrivena mesta	Vende të fshehura	Lieux masqués	Скрытые места	Къайладаьхна меттигаш	已隐藏地点	الأماكن المخفية
 unhide	Einblenden	Show	Göster	Prikaži	Prikaži	Shfaq	Afficher	Показать	Гайта	显示	إظهار
 hidden_footer	Ausgeblendete Orte erscheinen nicht auf der Karte und in der Liste. Hier kannst du sie einzeln oder alle wieder einblenden.	Hidden places don’t appear on the map or in the list. Show them again here, one by one or all at once.	Gizlenen yerler haritada ve listede görünmez. Buradan tek tek veya hepsini geri getirebilirsin.	Skrivena mjesta se ne prikazuju na karti i listi. Ovdje ih možeš ponovo prikazati.	Skrivena mesta se ne prikazuju na mapi i listi. Ovde ih možeš ponovo prikazati.	Vendet e fshehura nuk shfaqen në hartë. Këtu mund t’i shfaqësh përsëri.	Les lieux masqués n’apparaissent plus. Réaffichez-les ici.	Скрытые места не видны на карте и в списке. Здесь их можно вернуть.	Къайладаьхна меттигаш карта тӀехь ца го. Кхузахь юха гайта мегар ду.	已隐藏的地点不会显示在地图和列表中，可在此重新显示。	الأماكن المخفية لا تظهر على الخريطة. يمكنك إظهارها هنا.
+f_mosques	Moscheen	Mosques	Camiler	Džamije	Džamije	Xhamitë	Mosquées	Мечети	Маьждигаш	清真寺	المساجد
+f_prayer	Gebetsplätze	Prayer spots	Namaz yerleri	Mjesta za namaz	Mesta za namaz	Vende faljeje	Lieux de prière	Места для молитвы	Ламазан меттигаш	礼拜处	أماكن الصلاة
+f_wudu	Wudu	Wudu	Abdest	Abdest	Abdest	Abdes	Wudu	Омовение	Ламаз эцар	小净	الوضوء
+add_what	Was möchtest du eintragen?	What do you want to add?	Ne eklemek istersin?	Šta želiš dodati?	Šta želiš da dodaš?	Çfarë dëshiron të shtosh?	Que voulez-vous ajouter ?	Что добавить?	ХӀун тӀетоха лаьа?	你想添加什么？	ماذا تريد أن تضيف؟
+kind_prayer	Gebetsplatz	Prayer spot	Namaz yeri	Mjesto za namaz	Mesto za namaz	Vend faljeje	Lieu de prière	Место для молитвы	Ламазан меттиг	礼拜处	مكان للصلاة
+kind_wudu	Wudu-Platz	Wudu spot	Abdest yeri	Mjesto za abdest	Mesto za abdest	Vend për abdes	Lieu pour le wudu	Место для омовения	Ламаз эца меттиг	小净处	مكان للوضوء
+place_new	Ort eintragen	Add place	Yer ekle	Dodaj mjesto	Dodaj mesto	Shto vend	Ajouter un lieu	Добавить место	Меттиг тӀетоха	添加地点	إضافة مكان
+photos_n	FOTOS ({0}/5) · MINDESTENS 2	PHOTOS ({0}/5) · AT LEAST 2	FOTOĞRAFLAR ({0}/5) · EN AZ 2	FOTOGRAFIJE ({0}/5) · NAJMANJE 2	FOTOGRAFIJE ({0}/5) · NAJMANJE 2	FOTO ({0}/5) · TË PAKTËN 2	PHOTOS ({0}/5) · AU MOINS 2	ФОТО ({0}/5) · МИНИМУМ 2	СУРТАШ ({0}/5) · 2-гӀа кӀезиг доцуш	照片（{0}/5）· 至少 2 张	صور ({0}/5) · على الأقل 2
+take_photo	Foto aufnehmen	Take photo	Fotoğraf çek	Fotografiši	Fotografiši	Bëj foto	Prendre une photo	Сделать фото	Сурт даккха	拍照	التقاط صورة
+photo_hint	Bitte keine Personen fotografieren. Nur mit der Kamera, damit es echt vor Ort ist.	Please don’t photograph people. Camera only, so it’s really on site.	Lütfen insan fotoğraflama. Sadece kamerayla, yerinde olsun.	Molimo ne fotografiši ljude. Samo kamerom, da bude stvarno na licu mjesta.	Molimo ne fotografiši ljude. Samo kamerom, da bude stvarno na licu mesta.	Mos fotografo njerëz. Vetëm me kamerë, që të jetë vërtet në vend.	Ne photographiez pas de personnes. Uniquement avec l’appareil photo, sur place.	Не фотографируйте людей. Только камерой, на месте.	Нах ма даккха суьрташ. Камерица бен, меттигехь.	请勿拍摄人物。仅限现场拍照。	لا تصوّر أشخاصًا. بالكاميرا فقط وفي المكان نفسه.
+hours	Zugänglich	Open	Erişim	Pristupačno	Dostupno	E hapur	Accessible	Доступно	ДӀаделла	开放时间	متاح
+hours_hint	z. B. Mo–Fr 08:00–20:00 oder immer	e.g. Mon–Fri 08:00–20:00 or always	örn. Pzt–Cum 08:00–20:00 veya her zaman	npr. Pon–Pet 08:00–20:00 ili uvijek	npr. Pon–Pet 08:00–20:00 ili uvek	p.sh. Hën–Pre 08:00–20:00 ose gjithmonë	ex. lun–ven 08:00–20:00 ou toujours	напр. Пн–Пт 08:00–20:00 или всегда	масала, Ор–ПӀ 08:00–20:00 я даим	例如 周一至周五 08:00–20:00 或全天	مثال: الإثنين–الجمعة 08:00–20:00 أو دائمًا
+position_gps	GPS · aktueller Standort	GPS · current location	GPS · mevcut konum	GPS · trenutna lokacija	GPS · trenutna lokacija	GPS · vendndodhja aktuale	GPS · position actuelle	GPS · текущее место	GPS · хӀинцалера меттиг	GPS · 当前位置	GPS · الموقع الحالي
+details	ANGABEN	DETAILS	DETAYLAR	DETALJI	DETALJI	DETAJE	DÉTAILS	ПОДРОБНОСТИ	ДЕТАЛАШ	详情	التفاصيل
+t_in	Drinnen	Indoors	İçeride	Unutra	Unutra	Brenda	À l’intérieur	Внутри	Чохь	室内	داخلي
+t_out	Draußen	Outdoors	Dışarıda	Vani	Napolju	Jashtë	Dehors	Снаружи	Арахь	室外	خارجي
+t_quiet	Ruhig	Quiet	Sessiz	Mirno	Mirno	I qetë	Calme	Тихо	Тийна	安静	هادئ
+t_clean	Sauber	Clean	Temiz	Čisto	Čisto	I pastër	Propre	Чисто	ЦӀена	干净	نظيف
+t_free	Kostenlos	Free	Ücretsiz	Besplatno	Besplatno	Falas	Gratuit	Бесплатно	Мах доцуш	免费	مجاني
+t_women	Bereich für Frauen	Area for women	Kadınlar için	Prostor za žene	Prostor za žene	Për gratë	Espace femmes	Для женщин	Зударшна	女性区域	قسم للنساء
+t_access	Barrierefrei	Accessible	Engelsiz	Pristupačno	Pristupačno	Pa barriera	Accessible PMR	Без барьеров	Новкъарлойоцуш	无障碍	مهيأ لذوي الإعاقة
+t_sink	Waschbecken	Sink	Lavabo	Lavabo	Lavabo	Lavaman	Lavabo	Раковина	Йиттаран пхьегӀа	洗手池	مغسلة
+t_foot	Fußwaschbecken	Foot basin	Ayak lavabosu	Lavabo za noge	Lavabo za noge	Lavaman për këmbë	Lave-pieds	Для ног	Когаш йилла	洗脚池	مغسلة للقدمين
+t_wc	WC	Toilet	WC	WC	WC	WC	Toilettes	Туалет	Хьаштагӏа	卫生间	مرحاض
+entrance	Eingang	Entrance	Giriş	Ulaz	Ulaz	Hyrja	Entrée	Вход	Чувалар	入口	المدخل
+entrance_add	Foto vom Eingang	Entrance photo	Giriş fotoğrafı	Fotografija ulaza	Fotografija ulaza	Foto e hyrjes	Photo de l’entrée	Фото входа	Чуваларан сурт	入口照片	صورة المدخل
+delete	Löschen	Delete	Sil	Obriši	Obriši	Fshi	Supprimer	Удалить	ДӀаяккха	删除	حذف
+no_gps_yet	Noch kein Standort – bitte kurz warten oder GPS einschalten.	No location yet – please wait or turn on GPS.	Henüz konum yok – bekle veya GPS’i aç.	Još nema lokacije – sačekaj ili uključi GPS.	Još nema lokacije – sačekaj ili uključi GPS.	Ende pa vendndodhje – prit ose ndiz GPS.	Pas encore de position – patientez ou activez le GPS.	Местоположения ещё нет – подождите или включите GPS.	Меттиг яц хӀинца а – собар де я GPS лато.	尚无位置 – 请稍候或开启 GPS。	لا يوجد موقع بعد – انتظر أو شغّل GPS.
+sec_tone	Ton für Mitteilungen	Notification sound	Bildirim sesi	Zvuk obavijesti	Zvuk obaveštenja	Tingulli i njoftimit	Son des notifications	Звук уведомлений	Хаамийн аз	通知声音	صوت الإشعارات
+tone_footer	Antippen spielt den Ton ab und wählt ihn aus. Gilt für alle Gebete mit „Ton“.	Tap to play and select. Used for all prayers set to “Sound”.	Dokun, dinle ve seç. “Ses” ayarlı tüm namazlar için.	Dodirni da čuješ i odabereš. Vrijedi za sve namaze s „Zvukom“.	Dodirni da čuješ i odabereš. Važi za sve namaze sa „Zvukom“.	Prek për ta dëgjuar dhe zgjedhur. Vlen për të gjitha namazet me „Tingull“.	Touchez pour écouter et choisir. Pour toutes les prières en « Son ».	Нажмите, чтобы прослушать и выбрать. Для всех намазов со «Звуком».	ТӀетаӀае ла а дай, харжа а. «Аз» долчу массо ламазна.	点按试听并选择，适用于所有设置为“声音”的礼拜。	انقر للاستماع والاختيار. يُستخدم لكل الصلوات بوضع «صوت».
+tone_system	System-Standard	System default	Sistem varsayılanı	Sistemski	Sistemski	Parazgjedhja e sistemit	Par défaut	Системный	Системин	系统默认	افتراضي النظام
+tone_ton_gong	Sanfter Gong	Soft gong	Yumuşak gong	Blagi gong	Blagi gong	Gong i butë	Gong doux	Мягкий гонг	Кӏеда гонг	柔和锣声	جرس ناعم
+tone_ton_glocke	Glocke	Bell	Çan	Zvono	Zvono	Zile	Cloche	Колокол	Горгали	钟声	جرس
+tone_ton_harfe	Harfe	Harp	Arp	Harfa	Harfa	Harpë	Harpe	Арфа	Арфа	竖琴	قيثارة
+tone_ton_tropfen	Tropfen	Drop	Damla	Kap	Kap	Pikë	Goutte	Капля	Тӏадам	水滴	قطرة
+tone_ton_morgen	Morgenklang	Morning tone	Sabah sesi	Jutarnji zvuk	Jutarnji zvuk	Tingull mëngjesi	Son du matin	Утренний	Ӏуьйренан аз	晨曲	نغمة الصباح
+tone_ton_kristall	Kristall	Crystal	Kristal	Kristal	Kristal	Kristal	Cristal	Кристалл	Кристалл	水晶	كريستال
