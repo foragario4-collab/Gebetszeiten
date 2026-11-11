@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.withStyle
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.roundToInt
