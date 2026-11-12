@@ -30,7 +30,7 @@ class RadarService : Service(), LocationListener {
         override fun run() {
             lastLoc?.let { update(it) }
                 ?: getSystemService(NotificationManager::class.java)?.notify(ID, build(null))
-            handler.postDelayed(this, 60_000L)
+            handler.postDelayed(this, 30_000L)
         }
     }
 
@@ -56,6 +56,9 @@ class RadarService : Service(), LocationListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Prefs.init(this)
         Notifs.channels(this)
+        if (intent?.action != ACTION_STOP) {
+            try { stopService(Intent(this, LiveService::class.java)) } catch (e: Exception) { }
+        }
         if (intent?.action == ACTION_STOP) {
             Prefs.radar = false
             stopSelf()
@@ -131,43 +134,79 @@ class RadarService : Service(), LocationListener {
         return Times.around(now).first { it.at > now && it.kind.prayer }
     }
 
+    /**
+     * Eine Mitteilung für alles: laufendes Zeitfenster mit Balken (Fajr bis Shuruq, Dhuhr bis Asr …),
+     * nächstes Gebet der nächsten Moschee mit Adhan, Iqamah, Fahrzeit und „ca. vor/nach Iqamah“.
+     * Hauptknopf „Route“; ausgeschaltet wird der Radar in der App.
+     */
     private fun build(near: Pair<Mosque, Float>?): Notification {
-        val next = nextPrayer()
-        val gpsOff = !Loc.isOn(this)
-        val title = when {
-            gpsOff -> t("gps_off_title")
-            near != null -> "${NameFmt.name(near.first.name)} · ${Mosques.fmtDist(near.second)}"
-            else -> t("n_radar_active")
-        }
-        val iq = near?.first?.iqamah?.get(next.kind.name)
-        val text = if (gpsOff) t("gps_off_text")
-        else t("n_at", next.title, Fmt.time(next.at)) + (if (iq != null) " · " + t("n_iq", iq) else "")
-        val stopPi = PendingIntent.getService(
-            this, 9,
-            Intent(this, RadarService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
         val now = System.currentTimeMillis()
-        val prev = Times.around(now).lastOrNull { it.at <= now && it.kind.prayer }?.at ?: (next.at - 3_600_000L)
-        val pct = ((now - prev) * 100 / (next.at - prev).coerceAtLeast(1)).toInt()
-        val minsLeft = ((next.at - now + 59_999L) / 60_000L).coerceAtLeast(0)
+        val evs = Times.around(now)
+        val chain = evs.filter { it.kind.prayer || it.kind == Kind.SUNRISE }
+        val next = chain.firstOrNull { it.at > now } ?: nextPrayer()
+        val prev = chain.lastOrNull { it.at <= now }
+        val prevAt = prev?.at ?: (next.at - 3_600_000L)
+        val pct = ((now - prevAt) * 100 / (next.at - prevAt).coerceAtLeast(1)).toInt().coerceIn(0, 100)
+        val gpsOff = !Loc.isOn(this)
+        val period = t("period_running", prev?.title ?: next.title, next.title, Fmt.time(next.at))
+
+        var title = t("n_radar_active")
+        var line1 = period
+        val big = StringBuilder()
+        var routeUri: android.net.Uri? = null
+        if (gpsOff) {
+            title = t("gps_off_title")
+            line1 = t("gps_off_text")
+            big.append(line1)
+        } else if (near != null) {
+            val (m, d) = near
+            val travel = travelMin(d, Prefs.travelMode)
+            title = "${NameFmt.name(m.name)} · ${Mosques.fmtDist(d)} · ${Fmt.duration(travel * 60_000L)}"
+            val arr = now + travel * 60_000L
+            val niq = nextIqamah(m, evs, now, arr)
+            val p = niq?.first ?: evs.firstOrNull { it.at > now && it.kind.prayer } ?: next
+            val adhanTxt = niq?.second ?: Fmt.time(p.at)
+            val adhanMs = try {
+                val parts = adhanTxt.split(":")
+                p.day.atTime(parts[0].toInt(), parts[1].toInt()).atZone(Times.zone()).toInstant().toEpochMilli()
+            } catch (e: Exception) {
+                p.at
+            }
+            line1 = if (niq != null) "${p.title} $adhanTxt · ${t("iqamah")} ${Fmt.time(niq.third)}"
+            else "${p.title} $adhanTxt"
+            big.append(period).append('\n')
+            if (niq != null) {
+                big.append(
+                    t(
+                        "radar_next_line", p.title, adhanTxt, Fmt.duration((adhanMs - now).coerceAtLeast(0)),
+                        Fmt.time(niq.third), Fmt.duration((niq.third - now).coerceAtLeast(0))
+                    )
+                ).append('\n')
+                val diff = (niq.third - arr) / 60_000L
+                big.append(t("arrival", Fmt.time(arr))).append(" · ")
+                    .append(if (diff >= 0) t("diff_before", Fmt.duration(diff * 60_000L)) else t("diff_after", Fmt.duration(-diff * 60_000L)))
+            } else {
+                big.append("${p.title} $adhanTxt · ${t("in_time", Fmt.duration((adhanMs - now).coerceAtLeast(0)))}").append('\n')
+                    .append(t("arrival", Fmt.time(arr)))
+            }
+            routeUri = android.net.Uri.parse("geo:${m.lat},${m.lng}?q=${m.lat},${m.lng}(${android.net.Uri.encode(NameFmt.name(m.name))})")
+        } else {
+            big.append(period)
+        }
+
+        val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
         val b = Notification.Builder(this, Notifs.CH_LIVE)
             .setSmallIcon(R.drawable.ic_live_dot)
             .setColor(0xFF0B6E5F.toInt())
             .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(t("n_nearest"))
-            .also { nb ->
-                if (gpsOff) nb.setContentIntent(
-                    PendingIntent.getActivity(
-                        this, 11,
-                        Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                )
-            }
-            .setContentIntent(Notifs.openApp(this))
+            .setContentText(line1)
+            .setStyle(Notification.BigTextStyle().bigText(big.toString()))
+            .setContentIntent(
+                if (gpsOff) PendingIntent.getActivity(
+                    this, 11, Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                ) else Notifs.openApp(this)
+            )
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setUsesChronometer(true)
@@ -176,10 +215,22 @@ class RadarService : Service(), LocationListener {
             .setShowWhen(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setCategory(Notification.CATEGORY_NAVIGATION)
-            .addAction(Notification.Action.Builder(null, t("n_radar_off"), stopPi).build())
             .addExtras(extras)
-        val chip = Notifs.chipText(next, next.at - now)
-        Notifs.applyLiveStyle(b, pct, chip)
+        routeUri?.let { uri ->
+            val routePi = PendingIntent.getActivity(
+                this, 12, Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            b.addAction(Notification.Action.Builder(null, t("route"), routePi).build())
+        }
+        val mapPi = PendingIntent.getActivity(
+            this, 13,
+            Intent(this, MainActivity::class.java).putExtra("openTab", 2)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        b.addAction(Notification.Action.Builder(null, t("other_mosque"), mapPi).build())
+        Notifs.applyLiveStyle(b, pct, Notifs.chipText(next, next.at - now))
         return b.build()
     }
 
@@ -221,6 +272,8 @@ class RadarService : Service(), LocationListener {
         }
         lm = null
         getSystemService(NotificationManager::class.java)?.cancel(ID)
+        // Radar aus → normale Live-Anzeige übernimmt wieder
+        try { Scheduler.showCurrentLive(this) } catch (e: Exception) { }
         super.onDestroy()
     }
 }

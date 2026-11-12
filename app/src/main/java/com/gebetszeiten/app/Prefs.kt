@@ -206,6 +206,17 @@ object Prefs {
         get() = sp.getString("favId", "") ?: ""
         set(v) = edit { putString("favId", v) }
 
+    /** Letzte echte GPS-Position (auch wenn „Automatisch“ aus ist) */
+    var lastGpsLat: Double
+        get() = java.lang.Double.longBitsToDouble(sp.getLong("lastGpsLat", java.lang.Double.doubleToRawLongBits(0.0)))
+        set(v) = edit { putLong("lastGpsLat", java.lang.Double.doubleToRawLongBits(v)) }
+    var lastGpsLng: Double
+        get() = java.lang.Double.longBitsToDouble(sp.getLong("lastGpsLng", java.lang.Double.doubleToRawLongBits(0.0)))
+        set(v) = edit { putLong("lastGpsLng", java.lang.Double.doubleToRawLongBits(v)) }
+    var lastGpsAt: Long
+        get() = sp.getLong("lastGpsAt", 0L)
+        set(v) = edit { putLong("lastGpsAt", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

@@ -494,7 +494,7 @@ private fun MosqueDetail(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 TravelIcon(Prefs.travelMode, p.text, p.bg, 18.dp)
-                Txt(t("travel_min", tr) + " · " + Mosques.fmtDist(dist), 14, FontWeight.SemiBold)
+                Txt(Fmt.duration(tr * 60_000L) + " · " + Mosques.fmtDist(dist), 14, FontWeight.SemiBold)
             }
             ArrivalBar(now + tr * 60_000L, nextIqamah(m, evs, now, now + tr * 60_000L)?.third)
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
@@ -618,7 +618,7 @@ private fun MosqueDetail(
                     .tap {
                         val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
                         val txt = cm?.primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString()?.trim().orEmpty()
-                        if (txt.isNotBlank()) {
+                        if (txt.isNotBlank() && txt.length < 600) {
                             link = txt
                             loadLink()
                         }
@@ -863,7 +863,7 @@ private fun MosqueCard(
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TravelIcon(mode, p.text, p.bg, 16.dp)
-                    Txt(t("travel_min", travel), 14, FontWeight.Bold)
+                    Txt(Fmt.duration(travel * 60_000L), 14, FontWeight.Bold)
                 }
                 Txt(Mosques.fmtDist(d), 12, color = p.sub)
             }

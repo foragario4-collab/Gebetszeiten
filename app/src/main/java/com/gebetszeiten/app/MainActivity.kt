@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
+        NavRequest.tab = intent?.getIntExtra("openTab", -1) ?: -1
         Notifs.channels(this)
         enableEdgeToEdge()
         if (Prefs.setupDone && Build.VERSION.SDK_INT >= 33 &&
@@ -64,10 +65,18 @@ class MainActivity : ComponentActivity() {
         setContent { App() }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        NavRequest.tab = intent.getIntExtra("openTab", -1)
+    }
+
     override fun onResume() {
         super.onResume()
         Scheduler.showCurrentLive(this)
         Scheduler.schedule(this)
+        // „Automatisch (GPS)“: Ort beim Öffnen aktualisieren
+        if (hasLocPermission(this)) Loc.autoUpdate(this)
         Widgets.updateAll(this)
     }
 }
@@ -84,6 +93,13 @@ fun App() {
     val pal = if (dark) DarkPal else LightPal
     val dir = if (Prefs.lang.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Sprung aus einer Mitteilung (z. B. „Andere Moschee“ → Karte)
+    androidx.compose.runtime.LaunchedEffect(NavRequest.tab) {
+        if (NavRequest.tab in 0..2) {
+            tab = NavRequest.tab
+            NavRequest.tab = -1
+        }
+    }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     CompositionLocalProvider(LocalPal provides pal, LocalLayoutDirection provides dir) {
         if (!Prefs.setupDone) {
@@ -210,4 +226,10 @@ private fun TabBar(tab: Int, onTab: (Int) -> Unit) {
             }
         }
     }
+}
+
+
+/** Navigationswunsch von außen (Mitteilung), beobachtbar für die Oberfläche. */
+object NavRequest {
+    var tab by androidx.compose.runtime.mutableIntStateOf(-1)
 }

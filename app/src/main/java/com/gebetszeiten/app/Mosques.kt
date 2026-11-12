@@ -142,7 +142,7 @@ object Mosques {
         } catch (e: Exception) {
         }
         val unique = list.distinctBy { it.id }.distinctBy { it.url ?: it.id }
-        own = unique.toMutableList()
+        own = java.util.concurrent.CopyOnWriteArrayList(unique)
         overrides = ov
         if (unique.size != list.size) saveOwn(ctx)
     }
@@ -187,7 +187,9 @@ object Mosques {
         }.map { m -> ov[m.id]?.let { m.copy(iqamah = it) } ?: m }
         val good = mine + mw
         // Islam-Landkarte: genaue Namen, aber ohne Zeiten – nach eigenen und Mawaqit
-        val lk = (if (Prefs.useLandkarte) landkarte ?: emptyList() else emptyList()).filter { l ->
+        val lkAll = landkarte ?: emptyList()
+        val lkUse = if (Prefs.useLandkarte) lkAll else lkAll.filter { lkMosque.containsMatchIn(it.name) || lkPrayerOrg.containsMatchIn(it.name) }
+        val lk = lkUse.filter { l ->
             good.none { distance(it.lat, it.lng, l.lat, l.lng) < 80f }
         }.map { l -> ov[l.id]?.let { l.copy(iqamah = it) } ?: l }
         val better = good + lk
@@ -208,7 +210,9 @@ object Mosques {
             "takaful|wefa|rahma austria|hania|emus|amade|möh|imö|mlv|mjö|mpö|juwa|juwel|fiuk|cirde|leopold|ifime|" +
             "verband|föderation in wien - frauen|egitim|edukation|club|sport- und kulturverein für"
     )
-    private val lkMosque = Regex("(?i)moschee|masjid|mesjid|mescid|camii|dzemat|džemat|xhamia|musalla|gebetsraum|gebetshaus")
+    private val lkMosque = Regex("(?i)moschee|masjid|mesjid|mescid|camii|cami|dzemat|džemat|xhamia|musalla|gebetsraum|gebetshaus")
+    /** Vereine, die erfahrungsgemäß einen Gebetsraum haben (IGGÖ-Moscheegemeinden, Verbände) */
+    private val lkPrayerOrg = Regex("(?i)islamisches zentrum|islamzentrum|kulturzentrum|atib|islamische föderation|islamska zajednica|bosniak|džemat|dzemat|zentrum der|moscheegemeinde|kultusgemeinde|tekke|imam")
 
     private fun loadLk(ctx: Context) {
         try {
@@ -300,7 +304,7 @@ object Mosques {
             }
         } catch (e: Exception) {
         }
-        addrCache = m
+        addrCache = java.util.concurrent.ConcurrentHashMap(m)
     }
 
     /** Adresse zu einer Position (Straße Hausnummer, PLZ Ort) – wird gespeichert. */
@@ -649,9 +653,28 @@ object Mosques {
             lastFetchInfo = "HTTP $code"
             throw java.io.IOException("HTTP $code")
         }
-        val body = conn.inputStream.bufferedReader().use { it.readText() }
+        // höchstens 4 MB lesen (Schutz vor riesigen oder bösartigen Antworten)
+        val body = conn.inputStream.use { ins ->
+            val buf = java.io.ByteArrayOutputStream()
+            val chunk = ByteArray(16 * 1024)
+            var total = 0
+            while (true) {
+                val n = ins.read(chunk)
+                if (n < 0) break
+                total += n
+                if (total > 4 * 1024 * 1024) break
+                buf.write(chunk, 0, n)
+            }
+            buf.toString("UTF-8")
+        }
         conn.disconnect()
         return body
+    }
+
+    /** Nur echte Web-Links zulassen (kein file:, content: usw.). */
+    fun isWebLink(u: String): Boolean {
+        val l = u.trim().lowercase()
+        return (l.startsWith("https://") || l.startsWith("http://")) && !l.contains(" ") && l.length < 600
     }
 
     // ---------------- OpenStreetMap ----------------
@@ -1006,6 +1029,10 @@ object Mosques {
 
     /** Lädt eine MasjidBox- oder Mawaqit-Seite und liest Name, Adresse, Position und Zeiten. */
     fun fetchDraft(url: String): Draft {
+        if (!isWebLink(url.trim().let { if (it.startsWith("http")) it else "https://$it" })) {
+            lastFetchInfo = "kein gültiger Link"
+            throw IllegalArgumentException("kein gültiger Link")
+        }
         val u = url.trim().let { if (it.startsWith("http")) it else "https://$it" }
         val html = httpGet(u, browser = true)
         lastFetchInfo = "OK, ${html.length / 1024} kB"
@@ -1164,7 +1191,8 @@ object Mosques {
                 }
                 val name = o.optString("name")
                 val addr = o.optString("address")
-                val d = try {
+                val timesSource = url.contains("masjidbox", true) || url.contains("mawaqit", true)
+                val d = if (!timesSource) null else try {
                     fetchDraft(url)
                 } catch (e: Exception) {
                     null
@@ -1178,8 +1206,9 @@ object Mosques {
                         name = name.ifBlank { d?.name ?: "Moschee" },
                         lat = pos.first, lng = pos.second,
                         address = addr.ifBlank { d?.address ?: "" },
-                        source = if (url.contains("mawaqit")) "Mawaqit" else "MasjidBox",
-                        url = url,
+                        source = if (url.contains("mawaqit")) "Mawaqit" else if (url.contains("masjidbox")) "MasjidBox" else "Liste",
+                        url = if (timesSource) url else null,
+                        website = if (timesSource) null else url,
                         adhan = d?.adhan ?: emptyMap(), iqamah = d?.iqamah ?: emptyMap(),
                         custom = true, fetchedAt = if (d != null) System.currentTimeMillis() else 0L
                     )

@@ -12,16 +12,18 @@ android {
         applicationId = "com.gebetszeiten.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "4.8.1"
+        versionCode = 36
+        versionName = "5.0"
     }
 
     signingConfigs {
         create("fest") {
-            storeFile = file("gebetszeiten.keystore")
-            storePassword = "gebetszeiten"
+            // Bevorzugt aus GitHub-Secrets (Umgebungsvariablen), sonst die Datei im Projekt
+            val envStore = System.getenv("SIGNING_STORE_FILE")?.takeIf { it.isNotBlank() }
+            storeFile = if (envStore != null && file(envStore).exists()) file(envStore) else file("gebetszeiten.keystore")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")?.takeIf { it.isNotBlank() } ?: "gebetszeiten"
             keyAlias = "gebetszeiten"
-            keyPassword = "gebetszeiten"
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: "gebetszeiten"
         }
     }
 

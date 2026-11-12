@@ -223,8 +223,10 @@ fun MapScreen(v: Int) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
 
-    var myLat by remember { mutableDoubleStateOf(Prefs.lat) }
-    var myLng by remember { mutableDoubleStateOf(Prefs.lng) }
+    // Startpunkt: letzte echte GPS-Position (höchstens 6 Stunden alt), sonst der eingestellte Ort
+    val recentGps = Prefs.lastGpsAt > System.currentTimeMillis() - 6 * 3600_000L && Prefs.lastGpsLat != 0.0
+    var myLat by remember { mutableDoubleStateOf(if (recentGps) Prefs.lastGpsLat else Prefs.lat) }
+    var myLng by remember { mutableDoubleStateOf(if (recentGps) Prefs.lastGpsLng else Prefs.lng) }
 
     // ---------- Moscheen ----------
     var mosques by remember { mutableStateOf<List<Mosque>>(emptyList()) }
@@ -276,7 +278,7 @@ fun MapScreen(v: Int) {
             }
         }
         // Islam-Landkarte (ganz Österreich), einmal im Monat
-        if (Prefs.useLandkarte && (force || Mosques.landkarteNeedsRefresh(ctx))) {
+        if (force || Mosques.landkarteNeedsRefresh(ctx)) {
             Mosques.refreshLandkarte(ctx) { mosques = allPlaces(ctx) }
         }
         // Mawaqit: Moscheen mit tagesaktuellen Zeiten (Adhan, Iqamah, Jumuah)
@@ -321,6 +323,7 @@ fun MapScreen(v: Int) {
             if (loc != null) {
                 myLat = loc.latitude
                 myLng = loc.longitude
+                Loc.applyFix(ctx, loc.latitude, loc.longitude)
                 if (animate) mapRef?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(myLat, myLng), 13.5))
             }
             load(false)

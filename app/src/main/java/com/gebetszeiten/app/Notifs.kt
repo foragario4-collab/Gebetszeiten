@@ -232,6 +232,7 @@ object Notifs {
 
     /** Live-Anzeige zeigen: bevorzugt über den Dienst (aktualisiert den Balken laufend). */
     fun live(ctx: Context, ev: Ev, prevAt: Long? = null) {
+        if (Prefs.radar) return  // der Live-Radar zeigt alles in einer Mitteilung
         if (!LiveService.start(ctx)) {
             ctx.getSystemService(NotificationManager::class.java)?.notify(LIVE_ID, buildLive(ctx, ev, prevAt))
         }

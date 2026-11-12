@@ -31,3 +31,16 @@ Islamische Gebetszeiten-App für Android (läuft auch auf GrapheneOS ohne Google
 
 Die App ist immer mit demselben Schlüssel (`app/gebetszeiten.keystore`) signiert –
 neue Versionen lassen sich daher einfach drüber installieren.
+
+
+## Version 5.0
+- Startseite mit lebendem Himmel (Sonnenstand, Mond mit Phase, Volumenwolken, Regen, Schnee, Nebel, Gewitter) nach echtem Wetter (MET Norway)
+- Eine Mitteilung für Live-Anzeige und Live-Radar, mit „Route“ und „Andere Moschee“
+- Einheitliche Zeitangaben (45 Min · 2 Std · 1 Std 10 Min)
+- Islam-Landkarte wieder aktiv, gefiltert auf Moscheen/Gebetsräume (IGGÖ-Gemeinden, Verbände); Dua Center (1010) fest eingetragen
+- Sicherheit: keine Datensicherung privater Daten, Links geprüft, Seiten-Größe begrenzt, gleichzeitige Zugriffe abgesichert, Signaturschlüssel über GitHub-Secrets möglich
+
+### Signaturschlüssel absichern (empfohlen)
+In GitHub unter Settings → Secrets and variables → Actions drei Secrets anlegen:
+SIGNING_KEYSTORE_B64 (Keystore als Base64), SIGNING_STORE_PASSWORD, SIGNING_KEY_PASSWORD.
+Danach die Datei app/gebetszeiten.keystore aus dem Repo löschen.

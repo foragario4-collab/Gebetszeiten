@@ -2,6 +2,7 @@ package com.gebetszeiten.app
 
 import android.Manifest
 import android.content.Context
+import android.os.Build
 import android.content.pm.PackageManager
 import android.location.Location
 import androidx.compose.foundation.background
@@ -98,7 +99,16 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
     }
 
     ScreenColumn {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (isToday) {
+            SkyHeader(
+                now = now, nextTitle = next.title, countdown = Fmt.countdown(next.at - now),
+                atText = t("at_time", Fmt.time(next.at)), progress = frac,
+                dateText = DateText.headerTop(now) + " · " + Hijri.text(now), place = Prefs.place,
+                onSettings = onSettings
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (!isToday) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt(title, 34, FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
             Box(
                 Modifier
@@ -150,8 +160,8 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
         }
         Spacer(Modifier.height(14.dp))
 
-        // Nächstes Gebet (nur heute)
-        if (isToday) {
+        // Nächstes Gebet steht jetzt im Himmel-Kopf
+        if (isToday && Build.VERSION.SDK_INT < 0) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -186,6 +196,30 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
             }
         }
         Spacer(Modifier.height(18.dp))
+        }
+
+        // Hinweis: Du bist weit weg vom eingestellten Ort (z. B. im Urlaub) und „Automatisch“ ist aus
+        val gpsFresh = Prefs.lastGpsAt > now - 6 * 3600_000L && Prefs.lastGpsLat != 0.0
+        if (isToday && !Prefs.autoLoc && gpsFresh &&
+            Mosques.distance(Prefs.lat, Prefs.lng, Prefs.lastGpsLat, Prefs.lastGpsLng) > 50_000f
+        ) {
+            val ctx2 = androidx.compose.ui.platform.LocalContext.current
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x22FF9500)).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Txt(t("away_title", Prefs.place), 15, FontWeight.SemiBold)
+                Txt(t("away_text"), 13, color = p.sub)
+                Box(
+                    Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFFF9500))
+                        .tap {
+                            Prefs.autoLoc = true
+                            Loc.applyFix(ctx2, Prefs.lastGpsLat, Prefs.lastGpsLng)
+                        },
+                    contentAlignment = Alignment.Center
+                ) { Txt(t("use_here"), 15, FontWeight.SemiBold, Color.White) }
+            }
+            Spacer(Modifier.height(14.dp))
         }
 
         // Meine Moschee: nächste Iqamah und wann losfahren
@@ -350,8 +384,11 @@ private fun MyMosqueCard(now: Long, v: Int, onOpenMap: () -> Unit) {
         }
         info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val m = Mosques.listAll(ctx).firstOrNull { it.id == favId } ?: return@withContext null
-            val dist = Mosques.distance(Prefs.lat, Prefs.lng, m.lat, m.lng)
-            val sec = Routing.durations(Prefs.lat, Prefs.lng, listOf(m), Prefs.travelMode)[m.id]
+            val fresh = Prefs.lastGpsAt > System.currentTimeMillis() - 3 * 3600_000L && Prefs.lastGpsLat != 0.0
+            val la = if (fresh) Prefs.lastGpsLat else Prefs.lat
+            val lo = if (fresh) Prefs.lastGpsLng else Prefs.lng
+            val dist = Mosques.distance(la, lo, m.lat, m.lng)
+            val sec = Routing.durations(la, lo, listOf(m), Prefs.travelMode)[m.id]
             val travel = Routing.minutes(sec, dist, Prefs.travelMode)
             val t0 = System.currentTimeMillis()
             val niq = nextIqamah(m, Times.around(t0), t0, t0 + travel * 60_000L)
@@ -388,7 +425,7 @@ private fun MyMosqueCard(now: Long, v: Int, onOpenMap: () -> Unit) {
                 Txt(t("leave_by", Fmt.time(leave)), 14, FontWeight.SemiBold, c, Modifier.weight(1f), maxLines = 1)
                 TravelIcon(Prefs.travelMode, c, p.card, 15.dp)
                 Spacer(Modifier.width(4.dp))
-                Txt(t("travel_min", i.travel), 14, FontWeight.Bold, c)
+                Txt(Fmt.duration(i.travel * 60_000L), 14, FontWeight.Bold, c)
             }
         }
     }

@@ -51,7 +51,8 @@ class LiveService : Service() {
         Prefs.init(this)
         Notifs.channels(this)
         val a = Scheduler.currentLive(System.currentTimeMillis())
-        if (a == null) {
+        // Läuft der Live-Radar, zeigt er schon alles in seiner Mitteilung
+        if (a == null || Prefs.radar) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -83,7 +84,7 @@ class LiveService : Service() {
     /** Neu zeichnen; false = nichts mehr anzuzeigen, Dienst beendet sich. */
     private fun refresh(): Boolean {
         val a = Scheduler.currentLive(System.currentTimeMillis())
-        if (a == null || !Prefs.live) {
+        if (a == null || !Prefs.live || Prefs.radar) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return false

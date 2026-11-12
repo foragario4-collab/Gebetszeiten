@@ -80,7 +80,7 @@ object Loc {
                 } else null
             } catch (e: Exception) {
                 null
-            }
+            } ?: placeNameOsm(lat, lng)
             Handler(Looper.getMainLooper()).post { cb(name) }
         }.start()
     }
@@ -102,5 +102,68 @@ object Loc {
             )
         } catch (e: Exception) {
         }
+    }
+
+    /** Ortsname über OpenStreetMap, falls Android selbst keinen liefert (z. B. GrapheneOS ohne Google). */
+    private fun placeNameOsm(lat: Double, lng: Double): String? = try {
+        val conn = java.net.URL(
+            "https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=" +
+                "%.5f".format(Locale.US, lat) + "&lon=" + "%.5f".format(Locale.US, lng)
+        ).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 15_000
+        conn.setRequestProperty("User-Agent", "Gebetszeiten-App (Android)")
+        conn.setRequestProperty("Accept-Language", Prefs.lang.code + ",en;q=0.5")
+        val body = conn.inputStream.bufferedReader().use { it.readText() }
+        conn.disconnect()
+        val a = org.json.JSONObject(body).optJSONObject("address")
+        a?.let { listOf("city", "town", "village", "municipality", "county").map { k -> it.optString(k) }.firstOrNull { n -> n.isNotBlank() } }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Beim Öffnen der App: Standort holen. Merkt sich immer die letzte GPS-Position.
+     * Ist „Automatisch (GPS)“ an und hat man sich mehr als 1 km bewegt, werden Gebetszeiten,
+     * Qibla, Live-Anzeige und Widget auf den neuen Ort umgestellt.
+     */
+    fun autoUpdate(ctx: Context, done: () -> Unit = {}) {
+        if (!isOn(ctx)) return
+        fetch(ctx) { loc ->
+            if (loc == null) return@fetch
+            applyFix(ctx, loc.latitude, loc.longitude)
+            done()
+        }
+    }
+
+    /** Eine frische GPS-Position verarbeiten (auch von der Karte aus aufgerufen). */
+    fun applyFix(ctx: Context, lat: Double, lng: Double) {
+        Prefs.lastGpsLat = lat
+        Prefs.lastGpsLng = lng
+        Prefs.lastGpsAt = System.currentTimeMillis()
+        if (!Prefs.autoLoc) return
+        val moved = Mosques.distance(Prefs.lat, Prefs.lng, lat, lng)
+        if (moved < 1000f) return
+        Prefs.lat = lat
+        Prefs.lng = lng
+        if (moved > 10_000f) Prefs.place = t("my_location")
+        Scheduler.reschedule(ctx)
+        Widgets.updateAll(ctx)
+        val app = ctx.applicationContext
+        Thread {
+            val name = try {
+                if (Geocoder.isPresent()) {
+                    @Suppress("DEPRECATION")
+                    Geocoder(app, Locale.getDefault()).getFromLocation(lat, lng, 1)?.firstOrNull()
+                        ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
+                } else null
+            } catch (e: Exception) {
+                null
+            } ?: placeNameOsm(lat, lng)
+            if (name != null) Handler(Looper.getMainLooper()).post {
+                Prefs.place = name
+                Widgets.updateAll(app)
+            }
+        }.start()
     }
 }

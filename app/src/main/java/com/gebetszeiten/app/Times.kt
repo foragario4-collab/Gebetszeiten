@@ -109,7 +109,11 @@ object Fmt {
         val total = ceil(ms / 60_000.0).toLong().coerceAtLeast(0)
         val h = total / 60
         val m = total % 60
-        return if (h > 0) t("dur_hm", h, m) else t("dur_m", m)
+        return when {
+            h > 0 && m == 0L -> t("dur_h", h)
+            h > 0 -> t("dur_hm", h, m)
+            else -> t("dur_m", m)
+        }
     }
 
     fun countdown(ms: Long): String {

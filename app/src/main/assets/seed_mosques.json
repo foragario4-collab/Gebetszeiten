@@ -1,6 +1,11 @@
 {
-  "version": 3,
+  "version": 4,
   "items": [
+    {
+      "name": "Dua Center Moschee",
+      "address": "Kantgasse 3, 1010 Wien",
+      "url": "https://www.islam-landkarte.at/detail/dua-center-moschee"
+    },
     {
       "name": "Orientalisches Kulturzentrum Al-Rahma",
       "address": "Kaiser-Ebersdorfer-Straße 45, 1110 Wien",
