@@ -217,6 +217,11 @@ object Prefs {
         get() = sp.getLong("lastGpsAt", 0L)
         set(v) = edit { putLong("lastGpsAt", v) }
 
+    /** Live-Radar-Mitteilung im eigenen Design (Kacheln, Route-Knopf) statt Standard mit Zeit in der Statusleiste */
+    var notifDesign: Boolean
+        get() = sp.getBoolean("notifDesign", true)
+        set(v) = edit { putBoolean("notifDesign", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

@@ -154,6 +154,10 @@ class RadarService : Service(), LocationListener {
         var line1 = period
         val big = StringBuilder()
         var routeUri: android.net.Uri? = null
+        // Werte für das Design aus dem Entwurf (Kacheln)
+        var aLabel = ""; var aTime = ""; var aIn = ""
+        var iLabel = ""; var iTime = "–"; var iIn = ""
+        var arrText = ""; var diffText = ""; var late = false
         if (gpsOff) {
             title = t("gps_off_title")
             line1 = t("gps_off_text")
@@ -174,6 +178,18 @@ class RadarService : Service(), LocationListener {
             }
             line1 = if (niq != null) "${p.title} $adhanTxt · ${t("iqamah")} ${Fmt.time(niq.third)}"
             else "${p.title} $adhanTxt"
+            aLabel = "${p.title} · ADHAN".uppercase()
+            aTime = adhanTxt
+            aIn = if (adhanMs > now) t("in_time", Fmt.duration(adhanMs - now)) else t("started")
+            iLabel = t("iqamah").uppercase()
+            arrText = t("arrival", Fmt.time(arr))
+            if (niq != null) {
+                iTime = Fmt.time(niq.third)
+                iIn = if (niq.third > now) t("in_time", Fmt.duration(niq.third - now)) else t("started")
+                val df = (niq.third - arr) / 60_000L
+                late = df < 0
+                diffText = if (df >= 0) t("diff_before", Fmt.duration(df * 60_000L)) else t("diff_after", Fmt.duration(-df * 60_000L))
+            }
             big.append(period).append('\n')
             if (niq != null) {
                 big.append(
@@ -194,7 +210,9 @@ class RadarService : Service(), LocationListener {
             big.append(period)
         }
 
-        val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }
+        val custom = Prefs.notifDesign && near != null && !gpsOff
+        // Zeit in der Statusleiste gibt es bei Android 16 nur ohne eigenes Design
+        val extras = Bundle().apply { putBoolean("android.requestPromotedOngoing", !custom) }
         val b = Notification.Builder(this, Notifs.CH_LIVE)
             .setSmallIcon(R.drawable.ic_live_dot)
             .setColor(0xFF0B6E5F.toInt())
@@ -230,7 +248,40 @@ class RadarService : Service(), LocationListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         b.addAction(Notification.Action.Builder(null, t("other_mosque"), mapPi).build())
-        Notifs.applyLiveStyle(b, pct, Notifs.chipText(next, next.at - now))
+        if (custom) {
+            val rv = android.widget.RemoteViews(packageName, R.layout.notif_radar_big)
+            rv.setTextViewText(R.id.n_title, title)
+            rv.setTextViewText(R.id.n_period, period)
+            rv.setProgressBar(R.id.n_bar, 100, pct, false)
+            rv.setTextViewText(R.id.n_a_label, aLabel)
+            rv.setTextViewText(R.id.n_a_time, aTime)
+            rv.setTextViewText(R.id.n_a_in, aIn)
+            rv.setTextViewText(R.id.n_i_label, iLabel)
+            rv.setTextViewText(R.id.n_i_time, iTime)
+            rv.setTextViewText(R.id.n_i_in, iIn)
+            rv.setTextViewText(R.id.n_arr, arrText)
+            rv.setTextViewText(R.id.n_diff, diffText)
+            val c = if (late) 0xFFD70015.toInt() else 0xFF2DA44E.toInt()
+            rv.setTextColor(R.id.n_arr, c)
+            rv.setTextColor(R.id.n_diff, c)
+            rv.setInt(R.id.n_arr_box, "setBackgroundResource", if (late) R.drawable.notif_late else R.drawable.notif_ok)
+            rv.setTextViewText(R.id.n_route, t("route"))
+            rv.setTextViewText(R.id.n_other, t("other_mosque"))
+            routeUri?.let { uri ->
+                rv.setOnClickPendingIntent(
+                    R.id.n_route,
+                    PendingIntent.getActivity(
+                        this, 14, Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                )
+            }
+            rv.setOnClickPendingIntent(R.id.n_other, mapPi)
+            b.setStyle(Notification.DecoratedCustomViewStyle())
+            b.setCustomBigContentView(rv)
+        } else {
+            Notifs.applyLiveStyle(b, pct, Notifs.chipText(next, next.at - now))
+        }
         return b.build()
     }
 

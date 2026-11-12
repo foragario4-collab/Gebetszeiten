@@ -340,6 +340,11 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
                     Prefs.radarRadius = rr[i]
                 }
             }
+            ToggleRow(t("notif_design"), Prefs.notifDesign, sub = t("notif_design_sub")) {
+                Prefs.notifDesign = it
+                changed()
+                if (Prefs.radar) RadarService.start(ctx)
+            }
         }
 
         // ---------- Widget ----------

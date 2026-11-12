@@ -38,6 +38,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import kotlinx.coroutines.delay
 
 fun hasLocPermission(ctx: Context): Boolean =
@@ -98,16 +104,28 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
         else -> t("prayer_times")
     }
 
-    ScreenColumn {
+    // Ganzer Bildschirm: lebender Himmel, darauf alles auf Milchglas (wie im Entwurf)
+    val sky = rememberSky(now)
+    Box(Modifier.fillMaxSize()) {
+    SkyBackground(sky, Modifier.fillMaxSize())
+    androidx.compose.runtime.CompositionLocalProvider(LocalPal provides glassPal(sky)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(horizontal = 16.dp)
+            .padding(top = 12.dp, bottom = 24.dp)
+    ) {
         if (isToday) {
-            SkyHeader(
-                now = now, nextTitle = next.title, countdown = Fmt.countdown(next.at - now),
+            SkyHero(
+                info = sky, nextTitle = next.title, countdown = Fmt.countdown(next.at - now),
                 atText = t("at_time", Fmt.time(next.at)), progress = frac,
                 dateText = DateText.headerTop(now) + " · " + Hijri.text(now), place = Prefs.place,
                 onSettings = onSettings
             )
-            Spacer(Modifier.height(12.dp))
         }
+        val p = LocalPal.current
         if (!isToday) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Txt(title, 34, FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
             Box(
@@ -262,8 +280,10 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
         val m = PrayerCalc.method(Prefs.method)
         Txt(
             "${m.label} · ${Kind.ASR.label} ${if (Prefs.asr == 2) t("asr_hanafi") else t("asr_std")}",
-            12, color = p.sub, modifier = Modifier.padding(start = 16.dp)
+            12, color = LocalPal.current.sub, modifier = Modifier.padding(start = 16.dp)
         )
+    }
+    }
     }
 }
 

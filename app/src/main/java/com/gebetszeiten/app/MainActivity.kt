@@ -112,7 +112,8 @@ fun App() {
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.statusBars)
+                        // „Heute“ zeichnet den Himmel bis unter die Statusleiste
+                        .then(if (tab == 0) Modifier else Modifier.windowInsetsPadding(WindowInsets.statusBars))
                 ) {
                     when (tab) {
                         0 -> TodayScreen(v, onSettings = { showSettings = true }, onOpenMap = { tab = 2 })

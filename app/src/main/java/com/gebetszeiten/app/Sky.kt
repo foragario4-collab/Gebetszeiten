@@ -204,7 +204,7 @@ private fun mixC(a: FloatArray, b: FloatArray, t: Float) = FloatArray(3) { a[it]
 private fun lum(c: FloatArray) = 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2]
 
 /** Alles, was der Himmel für einen Zeitpunkt braucht (aus echten Gebetszeiten + Wetter). */
-private class SkyState(
+internal class SkyState(
     val top: FloatArray, val mid: FloatArray, val hor: FloatArray,
     val sunX: Float, val sunY: Float, val sunVis: Float, val sunCol: FloatArray, val sunLow: Float,
     val moonX: Float, val moonY: Float, val moonVis: Float, val phase: Float, val stars: Float,
@@ -212,7 +212,7 @@ private class SkyState(
     val lit: FloatArray, val shade: FloatArray, val night: Boolean, val dusk: Boolean, val thunder: Boolean
 )
 
-private fun skyState(now: Long, wx: Wx?): SkyState {
+internal fun skyState(now: Long, wx: Wx?): SkyState {
     val today = Times.today(now)
     val evs = Times.events(today, 1).filter { it.day == today }
     fun mins(k: Kind, def: Int): Float {
@@ -288,7 +288,7 @@ private fun skyState(now: Long, wx: Wx?): SkyState {
 }
 
 /** Blitz: zackiger Kanal mit Ästen, flackert 2–4 Mal. */
-private class Strike(val paths: List<List<Offset>>, val x: Float, val y: Float, val t0: Long, val pulses: List<Pair<Long, Float>>) {
+internal class Strike(val paths: List<List<Offset>>, val x: Float, val y: Float, val t0: Long, val pulses: List<Pair<Long, Float>>) {
     fun intensity(now: Long): Float {
         val dt = now - t0
         if (dt > 900) return 0f
@@ -326,15 +326,18 @@ private fun makeStrike(w: Float, h: Float, now: Long): Strike {
 
 private val SKYLINE = "M0 120 V96 H18 V88 H30 V96 H48 V80 Q48 70 58 66 Q68 70 68 80 V96 H78 V58 L81 48 L84 58 V96 H96 V90 H120 V84 H134 V92 H150 V74 Q150 52 176 46 Q202 52 202 74 V92 H214 V40 L218 28 L222 40 V92 H236 V86 H254 V94 H272 V82 Q272 72 282 68 Q292 72 292 82 V94 H306 V88 H326 V96 H346 V86 H360 V96 H390 V120 Z"
 
-/**
- * Kopfbereich der Startseite: lebender Himmel nach echtem Sonnenstand und Wetter,
- * darauf nächstes Gebet mit Countdown – immer lesbar.
- */
+/** Laufender Zustand des Himmels (Wetter, Animation, Blitz, Helligkeit hinter dem Text). */
+class SkyInfo internal constructor(
+    internal val st: SkyState, val wx: Wx?,
+    internal val time: androidx.compose.runtime.MutableFloatState,
+    internal val flash: androidx.compose.runtime.MutableFloatState,
+    internal val strike: androidx.compose.runtime.MutableState<Strike?>,
+    internal val size: androidx.compose.runtime.MutableState<androidx.compose.ui.geometry.Size>,
+    val heroLum: Float, val listLum: Float
+)
+
 @Composable
-fun SkyHeader(
-    now: Long, nextTitle: String, countdown: String, atText: String, progress: Float,
-    dateText: String, place: String, onSettings: () -> Unit, height: Dp = 380.dp
-) {
+fun rememberSky(now: Long): SkyInfo {
     val ctx = LocalContext.current
     var wx by remember { mutableStateOf(Weather.current(ctx)) }
     LaunchedEffect(now / 600_000L) {
@@ -349,8 +352,8 @@ fun SkyHeader(
     }
     val time = remember { mutableFloatStateOf(0f) }
     val flash = remember { mutableFloatStateOf(0f) }
-    var strike by remember { mutableStateOf<Strike?>(null) }
-    var skySize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+    val strike = remember { mutableStateOf<Strike?>(null) }
+    val size = remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, reduceMotion, st.thunder) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
@@ -362,46 +365,44 @@ fun SkyHeader(
                         last = ms
                         if (!reduceMotion) time.floatValue = ms / 1000f
                         val wall = System.currentTimeMillis()
-                        if (st.thunder && wall > nextBolt && skySize.width > 0f) {
-                            strike = makeStrike(skySize.width, skySize.height, wall)
+                        val sz = size.value
+                        if (st.thunder && wall > nextBolt && sz.width > 0f) {
+                            strike.value = makeStrike(sz.width, sz.height * 0.55f, wall)
                             nextBolt = wall + 2600 + (Math.random() * 6500).toLong()
                         }
-                        flash.floatValue = strike?.intensity(wall) ?: 0f
+                        flash.floatValue = strike.value?.intensity(wall) ?: 0f
                     }
                 }
             }
         }
     }
-    // Lesbarkeit: Helligkeit hinter dem Text abschätzen → Schrift weiß mit Schatten oder dunkel
-    val heroLum = run {
-        var l = max(lum(st.mid), lum(st.hor) * 0.6f)
-        if (!st.night) l = l * (1 - st.cloud * 0.5f) + 0.85f * st.cloud * 0.5f
-        val dx = st.sunX - 0.5f; val dy = st.sunY - 0.6f
-        l += st.sunVis * exp(-sqrt(dx * dx + dy * dy) * 5f) * 0.6f
-        l += st.fog * 0.25f + st.snow * 0.2f
-        l.coerceIn(0f, 1f)
-    }
-    var darkText by remember { mutableStateOf(false) }
-    darkText = if (darkText) heroLum > 0.56f else heroLum > 0.66f
-    val fg = if (darkText) Color(0xFF14213D) else Color.White
-    val shadowStrength = min(0.6f, 0.25f + max(0f, heroLum - 0.35f) * 1.1f)
-    val shadow = if (darkText) Shadow(Color.White.copy(alpha = 0.55f), Offset(0f, 1f), 12f)
-    else Shadow(Color.Black.copy(alpha = shadowStrength), Offset(0f, 2f), 16f)
+    // Helligkeit hinter dem großen Countdown und hinter der Liste (für Schrift und Glas)
+    var hero = max(lum(st.mid), lum(st.hor) * 0.6f)
+    if (!st.night) hero = hero * (1 - st.cloud * 0.5f) + 0.85f * st.cloud * 0.5f
+    val dx = st.sunX - 0.5f; val dy = st.sunY - 0.62f
+    hero += st.sunVis * exp(-sqrt(dx * dx + dy * dy) * 5f) * 0.6f + st.fog * 0.25f + st.snow * 0.2f
+    var list = max(lum(st.mid), lum(st.hor)) + st.fog * 0.3f + st.snow * 0.2f
+    if (!st.night) list += st.cloud * 0.15f
+    return SkyInfo(st, wx, time, flash, strike, size, hero.coerceIn(0f, 1f), list.coerceIn(0f, 1f))
+}
 
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(28.dp))) {
+/** Himmel über die ganze Fläche: Shader (ab Android 13), Blitzkanal, Silhouette mit Kuppeln und Minaretten. */
+@Composable
+fun SkyBackground(info: SkyInfo, modifier: Modifier = Modifier) {
+    val st = info.st
+    BoxWithConstraints(modifier) {
         val density = LocalDensity.current
         val wPx = with(density) { maxWidth.toPx() }
         val hPx = with(density) { maxHeight.toPx() }
         if (Build.VERSION.SDK_INT >= 33 && SkyShader.ok()) {
-            ShaderSky(st, time, flash, strike, wPx, hPx)
+            ShaderSky(st, info.time, info.flash, info.strike.value, wPx, hPx)
         } else {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(st.top[0], st.top[1], st.top[2]), Color(st.mid[0], st.mid[1], st.mid[2]), Color(st.hor[0], st.hor[1], st.hor[2])))))
         }
-        // Blitzkanal
         Canvas(Modifier.fillMaxSize()) {
-            skySize = this.size
-            val s = strike ?: return@Canvas
-            val v = flash.floatValue
+            info.size.value = this.size
+            val s = info.strike.value ?: return@Canvas
+            val v = info.flash.floatValue
             if (v < 0.03f || s.paths.isEmpty()) return@Canvas
             for ((k, pts) in s.paths.withIndex()) {
                 val wgt = if (k == 0) 1f else 0.5f
@@ -411,7 +412,6 @@ fun SkyHeader(
                 drawPath(path, Color.White.copy(alpha = v * (0.6f + 0.4f * wgt)), style = Stroke(width = 2.4f * wgt + 0.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
         }
-        // Silhouette mit Kuppeln und Minaretten
         val sky = remember { PathParser().parsePathString(SKYLINE).toPath() }
         Canvas(Modifier.fillMaxSize()) {
             val sc = this.size.width / 390f
@@ -420,39 +420,71 @@ fun SkyHeader(
             val p2 = Path().apply { addPath(sky); transform(tr) }
             drawPath(p2, skyCol)
             if (st.night || st.dusk) {
-                val wc = Color(0xFFFFD27A).copy(alpha = 0.85f + 0.15f * sin(time.floatValue * 1.3f))
-                fun win(x: Float, y: Float) = drawCircle(wc, 1.8f * sc, Offset(x * sc, this.size.height - (120f - y) * sc))
-                listOf(168f to 83f, 176f to 83f, 184f to 83f, 55f to 87f, 61f to 87f, 279f to 88f, 285f to 88f, 218f to 34f).forEach { (x, y) -> win(x, y) }
-            }
-        }
-        // Text
-        Column(Modifier.fillMaxSize().padding(18.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Text(dateText, color = fg.copy(alpha = 0.9f), style = TextStyle(fontSize = 13.sp, shadow = shadow), maxLines = 1)
-                    val wtxt = listOfNotNull(place, wx?.temp?.let { "$it°" }, wx?.label()).joinToString(" · ")
-                    Text(wtxt, color = fg, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, shadow = shadow), maxLines = 1)
-                }
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).tap(scale = 0.9f, onClick = onSettings),
-                    contentAlignment = Alignment.Center
-                ) { GlyphIcon("M4 7h10M18 7h2M4 17h4M12 17h8M16 5a2 2 0 1 0 0 4a2 2 0 1 0 0-4zM10 15a2 2 0 1 0 0 4a2 2 0 1 0 0-4z", fg, 20.dp) }
-            }
-            Spacer(Modifier.weight(1f))
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(t("next_up").uppercase(), color = fg.copy(alpha = 0.9f), style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, shadow = shadow))
-                Text(nextTitle, color = fg, style = TextStyle(fontSize = 40.sp, fontWeight = FontWeight.Bold, shadow = shadow), maxLines = 1)
-                Text(countdown, color = fg, style = TextStyle(fontSize = 56.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-2).sp, shadow = shadow), maxLines = 1)
-                Text(atText, color = fg.copy(alpha = 0.92f), style = TextStyle(fontSize = 15.sp, shadow = shadow))
-                Spacer(Modifier.height(10.dp))
-                Box(Modifier.width(180.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg.copy(alpha = 0.25f))) {
-                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg))
+                val wc = Color(0xFFFFD27A).copy(alpha = 0.85f + 0.15f * sin(info.time.floatValue * 1.3f))
+                listOf(168f to 83f, 176f to 83f, 184f to 83f, 55f to 87f, 61f to 87f, 279f to 88f, 285f to 88f, 218f to 34f).forEach { (x, y) ->
+                    drawCircle(wc, 1.8f * sc, Offset(x * sc, this.size.height - (120f - y) * sc))
                 }
             }
-            Spacer(Modifier.weight(0.6f))
-            if (wx != null) Text(t("weather_src"), color = Color.White.copy(alpha = 0.55f), style = TextStyle(fontSize = 9.sp), modifier = Modifier.align(Alignment.End))
         }
     }
+}
+
+/** Datum, Ort, Wetter und nächstes Gebet direkt auf dem Himmel – Schrift passt sich der Helligkeit an. */
+@Composable
+fun SkyHero(
+    info: SkyInfo, nextTitle: String, countdown: String, atText: String, progress: Float,
+    dateText: String, place: String, onSettings: () -> Unit
+) {
+    var darkText by remember { mutableStateOf(false) }
+    darkText = if (darkText) info.heroLum > 0.56f else info.heroLum > 0.66f
+    val fg = if (darkText) Color(0xFF14213D) else Color.White
+    val sh = min(0.6f, 0.25f + max(0f, info.heroLum - 0.35f) * 1.1f)
+    val shadow = if (darkText) Shadow(Color.White.copy(alpha = 0.55f), Offset(0f, 1f), 12f)
+    else Shadow(Color.Black.copy(alpha = sh), Offset(0f, 2f), 16f)
+    val wx = info.wx
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                Text(dateText, color = fg.copy(alpha = 0.9f), style = TextStyle(fontSize = 13.sp, shadow = shadow), maxLines = 1)
+                val wtxt = listOfNotNull(place, wx?.temp?.let { "$it°" }, wx?.label()).joinToString(" · ")
+                Text(wtxt, color = fg, style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, shadow = shadow), maxLines = 1)
+            }
+            Box(
+                Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).tap(scale = 0.9f, onClick = onSettings),
+                contentAlignment = Alignment.Center
+            ) { GlyphIcon("M4 7h10M18 7h2M4 17h4M12 17h8M16 5a2 2 0 1 0 0 4a2 2 0 1 0 0-4zM10 15a2 2 0 1 0 0 4a2 2 0 1 0 0-4z", fg, 20.dp) }
+        }
+        Spacer(Modifier.height(84.dp))
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(t("next_up").uppercase(), color = fg.copy(alpha = 0.9f), style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, shadow = shadow))
+            Text(nextTitle, color = fg, style = TextStyle(fontSize = 42.sp, fontWeight = FontWeight.Bold, shadow = shadow), maxLines = 1)
+            Text(countdown, color = fg, style = TextStyle(fontSize = 64.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-2).sp, shadow = shadow), maxLines = 1)
+            Text(atText, color = fg.copy(alpha = 0.92f), style = TextStyle(fontSize = 15.sp, shadow = shadow))
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.width(180.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg.copy(alpha = 0.25f))) {
+                Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg))
+            }
+        }
+        Spacer(Modifier.height(96.dp))
+    }
+}
+
+/** Milchglas-Palette: alle Karten der Startseite liegen getönt auf dem Himmel, Tönung je nach Helligkeit. */
+fun glassPal(info: SkyInfo): Pal {
+    val a = (0.25f + info.listLum * 0.45f).coerceIn(0.32f, 0.62f)
+    return Pal(
+        bg = Color.Transparent,
+        card = Color(0xFF0E1426).copy(alpha = a),
+        text = Color.White,
+        sub = Color.White.copy(alpha = 0.72f),
+        line = Color.White.copy(alpha = 0.16f),
+        accent = Color.White.copy(alpha = 0.22f),
+        accentText = Color(0xFF7CF0C8),
+        hl = Color.White.copy(alpha = 0.16f),
+        fill = Color.White.copy(alpha = 0.14f),
+        seg = Color.White.copy(alpha = 0.28f),
+        dark = true
+    )
 }
 
 @RequiresApi(33)
