@@ -44,6 +44,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 fun hasLocPermission(ctx: Context): Boolean =
@@ -104,191 +108,126 @@ fun TodayScreen(v: Int, onSettings: () -> Unit = {}, onOpenMap: () -> Unit = {})
         else -> t("prayer_times")
     }
 
-    // Ganzer Bildschirm: lebender Himmel, darauf alles auf Milchglas (wie im Entwurf)
+    // EIN Bildschirm ohne Scrollen: lebender Himmel, darauf echtes Milchglas (wie in der Probe)
     val sky = rememberSky(now)
-    Box(Modifier.fillMaxSize()) {
-    SkyBackground(sky, Modifier.fillMaxSize())
-    androidx.compose.runtime.CompositionLocalProvider(LocalPal provides glassPal(sky)) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp)
-            .padding(top = 12.dp, bottom = 24.dp)
-    ) {
-        if (isToday) {
-            SkyHero(
-                info = sky, nextTitle = next.title, countdown = Fmt.countdown(next.at - now),
-                atText = t("at_time", Fmt.time(next.at)), progress = frac,
-                dateText = DateText.headerTop(now) + " · " + Hijri.text(now), place = Prefs.place,
-                onSettings = onSettings
-            )
-        }
-        val p = LocalPal.current
-        if (!isToday) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Txt(title, 34, FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(p.card)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+    val reg = remember { GlassRegistry() }
+    val tintA = (Math.round((0.18f + sky.listLum * 0.42f) * 20f) / 20f).coerceIn(0.2f, 0.5f)
+    val tint = Color(0xFF0E1426).copy(alpha = tintA)
+    val gPal = remember(Math.round(sky.listLum * 20f)) { glassPal(sky).copy(card = Color.Transparent) }
+    val (fg, shadow) = rememberSkyText(sky)
+    val wx = sky.wx
+    val gpsFresh = Prefs.lastGpsAt > now - 6 * 3600_000L && Prefs.lastGpsLat != 0.0
+    val awayShown = isToday && !Prefs.autoLoc && gpsFresh &&
+        Mosques.distance(Prefs.lat, Prefs.lng, Prefs.lastGpsLat, Prefs.lastGpsLng) > 50_000f
+    // Glasflächen, die gerade nicht sichtbar sind, aus dem Unschärfe-Bereich entfernen
+    androidx.compose.runtime.SideEffect {
+        val keep = buildSet { add("list"); if (isToday) add("fav") else add("todaypill"); if (awayShown) add("away") }
+        reg.rects.keys.retainAll(keep)
+    }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { reg.origin = it.positionInRoot() }) {
+        SkyBackground(sky, Modifier.fillMaxSize())
+        GlassBackdrop(sky, reg)
+        androidx.compose.runtime.CompositionLocalProvider(LocalPal provides gPal) {
+            BoxWithConstraints(
+                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp).padding(top = 6.dp, bottom = 12.dp)
             ) {
-                Txt(Prefs.place, 14, FontWeight.SemiBold, p.accentText, maxLines = 1, modifier = Modifier.widthIn(max = 130.dp))
-            }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(p.card)
-                    .tap(scale = 0.9f, onClick = onSettings),
-                contentAlignment = Alignment.Center
-            ) { SlidersIcon(p.accentText) }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // Tag wechseln
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(p.card).padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DayArrow(left = true) { offset-- }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Txt(DateText.headerTop(dayMs), 15, FontWeight.SemiBold, maxLines = 1, align = TextAlign.Center)
-                Txt(Hijri.text(dayMs), 12, color = p.sub, maxLines = 1, align = TextAlign.Center)
-            }
-            DayArrow(left = false) { offset++ }
-        }
-        androidx.compose.animation.AnimatedVisibility(visible = !isToday) {
-            Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
-                Row(
-                    Modifier
-                        .clip(RoundedCornerShape(17.dp))
-                        .background(p.accent)
-                        .tap { offset = 0 }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    GlyphIcon(Glyph.RESET, Color.White, 15.dp)
-                    Spacer(Modifier.width(6.dp))
-                    Txt(t("tab_today"), 14, FontWeight.SemiBold, Color.White)
+                val small = maxHeight < 700.dp
+                Column(Modifier.fillMaxSize()) {
+                    // Kopf: Tag zurück · Datum + Ort/Wetter · Tag vor · Einstellungen
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SkyIconButton(Glyph.CHEV_L, fg) { offset-- }
+                        Column(Modifier.weight(1f).padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            androidx.compose.material3.Text(
+                                DateText.headerTop(dayMs) + " · " + Hijri.text(dayMs), color = fg.copy(alpha = 0.92f), maxLines = 1,
+                                style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, shadow = shadow)
+                            )
+                            androidx.compose.material3.Text(
+                                listOfNotNull(Prefs.place, wx?.temp?.let { "$it°" }, wx?.label()).joinToString(" · "),
+                                color = fg, maxLines = 1,
+                                style = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, shadow = shadow)
+                            )
+                        }
+                        SkyIconButton(Glyph.CHEV_R, fg) { offset++ }
+                        Spacer(Modifier.width(6.dp))
+                        SkyIconButton("M4 7h10M18 7h2M4 17h4M12 17h8M16 5a2 2 0 1 0 0 4a2 2 0 1 0 0-4zM10 15a2 2 0 1 0 0 4a2 2 0 1 0 0-4z", fg, onClick = onSettings)
+                    }
+                    if (!isToday) {
+                        Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                            Row(
+                                Modifier.glass(reg, "todaypill", 17.dp, tint).tap { offset = 0 }.padding(horizontal = 14.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                GlyphIcon(Glyph.RESET, Color.White, 14.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Txt(t("tab_today"), 14, FontWeight.SemiBold, Color.White)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // Mitte: nächstes Gebet groß (heute) bzw. Titel des gewählten Tages
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        val ts = { size: Int, w: FontWeight -> androidx.compose.ui.text.TextStyle(fontSize = size.sp, fontWeight = w, shadow = shadow) }
+                        if (isToday) {
+                            androidx.compose.material3.Text(t("next_up").uppercase(), color = fg.copy(alpha = 0.9f), style = ts(13, FontWeight.SemiBold).copy(letterSpacing = 1.5.sp))
+                            androidx.compose.material3.Text(next.title, color = fg, style = ts(if (small) 32 else 40, FontWeight.Bold), maxLines = 1)
+                            androidx.compose.material3.Text(Fmt.countdown(next.at - now), color = fg, style = ts(if (small) 48 else 60, FontWeight.ExtraLight).copy(letterSpacing = (-2).sp), maxLines = 1)
+                            androidx.compose.material3.Text(t("at_time", Fmt.time(next.at)), color = fg.copy(alpha = 0.92f), style = ts(15, FontWeight.Normal))
+                            Spacer(Modifier.height(8.dp))
+                            Box(Modifier.width(170.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg.copy(alpha = 0.25f))) {
+                                Box(Modifier.fillMaxWidth(frac).height(5.dp).clip(RoundedCornerShape(3.dp)).background(fg))
+                            }
+                        } else {
+                            androidx.compose.material3.Text(title, color = fg, style = ts(if (small) 30 else 36, FontWeight.Bold), maxLines = 1)
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // Hinweis: weit weg vom eingestellten Ort
+                    if (awayShown) {
+                        Row(
+                            Modifier.fillMaxWidth().glass(reg, "away", 16.dp, Color(0x55FF9500)).padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Txt(t("away_title", Prefs.place), 13, FontWeight.SemiBold, Color.White, Modifier.weight(1f), maxLines = 2)
+                            Box(
+                                Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xFFFF9500)).tap {
+                                    Prefs.autoLoc = true
+                                    Loc.applyFix(ctx, Prefs.lastGpsLat, Prefs.lastGpsLng)
+                                }.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) { Txt(t("apply"), 13, FontWeight.SemiBold, Color.White) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    // Meine Moschee (kompakt)
+                    if (isToday) {
+                        Box(Modifier.fillMaxWidth().glass(reg, "fav", 18.dp, tint)) { MyMosqueCard(now, v, onOpenMap) }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    // Gebetszeiten auf Glas
+                    Column(Modifier.fillMaxWidth().glass(reg, "list", 24.dp, tint)) {
+                        list.forEachIndexed { i, e ->
+                            GlassPrayerRow(
+                                ctx, e, first = i == 0, isNext = isToday && e == next, past = isToday && e.at <= now,
+                                nextIn = if (isToday && e == next) Fmt.countdown(next.at - now) else null, small = small
+                            )
+                        }
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(14.dp))
-
-        // Nächstes Gebet steht jetzt im Himmel-Kopf
-        if (isToday && Build.VERSION.SDK_INT < 0) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
-                .background(p.accent)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Txt(t("next_up"), 13, FontWeight.SemiBold, Color.White.copy(alpha = 0.85f))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                Txt(next.title, 36, FontWeight.Bold, Color.White, Modifier.weight(1f), maxLines = 1)
-                Txt(Fmt.time(next.at), 36, FontWeight.Light, Color.White)
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.White.copy(alpha = 0.25f))
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(frac)
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color.White)
-                )
-            }
-            Row(Modifier.fillMaxWidth()) {
-                Txt("${prev.title} ${Fmt.time(prev.at)}", 14, FontWeight.Medium, Color.White, Modifier.weight(1f))
-                Txt(t("still", Fmt.countdown(next.at - now)), 14, FontWeight.Medium, Color.White)
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        }
-
-        // Hinweis: Du bist weit weg vom eingestellten Ort (z. B. im Urlaub) und „Automatisch“ ist aus
-        val gpsFresh = Prefs.lastGpsAt > now - 6 * 3600_000L && Prefs.lastGpsLat != 0.0
-        if (isToday && !Prefs.autoLoc && gpsFresh &&
-            Mosques.distance(Prefs.lat, Prefs.lng, Prefs.lastGpsLat, Prefs.lastGpsLng) > 50_000f
-        ) {
-            val ctx2 = androidx.compose.ui.platform.LocalContext.current
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x22FF9500)).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Txt(t("away_title", Prefs.place), 15, FontWeight.SemiBold)
-                Txt(t("away_text"), 13, color = p.sub)
-                Box(
-                    Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFFF9500))
-                        .tap {
-                            Prefs.autoLoc = true
-                            Loc.applyFix(ctx2, Prefs.lastGpsLat, Prefs.lastGpsLng)
-                        },
-                    contentAlignment = Alignment.Center
-                ) { Txt(t("use_here"), 15, FontWeight.SemiBold, Color.White) }
-            }
-            Spacer(Modifier.height(14.dp))
-        }
-
-        // Meine Moschee: nächste Iqamah und wann losfahren
-        if (isToday) {
-            MyMosqueCard(now, v, onOpenMap)
-            Spacer(Modifier.height(18.dp))
-        }
-
-        // Liste
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(p.card)) {
-            list.forEachIndexed { i, e ->
-                PrayerRow(ctx, e, first = i == 0, isNext = isToday && e == next, past = isToday && e.at <= now, today = day)
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-
-        // Nacht-Info
-        val maghrib = list.firstOrNull { it.kind == Kind.MAGHRIB }
-        val fajrNext = maghrib?.let { m -> (if (isToday) evs else Times.events(day, 2)).firstOrNull { it.kind == Kind.FAJR && it.at > m.at } }
-        if (maghrib != null && fajrNext != null) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(p.card)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Txt(t("the_night"), 16, FontWeight.SemiBold)
-                Txt(
-                    t("night_line", Fmt.time(maghrib.at), Fmt.time(fajrNext.at), Fmt.duration(fajrNext.at - maghrib.at)),
-                    13, color = p.sub
-                )
-                val mm = if (Prefs.midnightMode == "sunrise") t("mm_sunrise") else t("mm_fajr")
-                Txt(t("midnight_def", mm), 13, color = p.sub)
-                Txt(t("third_def"), 13, color = p.sub)
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-        val m = PrayerCalc.method(Prefs.method)
-        Txt(
-            "${m.label} · ${Kind.ASR.label} ${if (Prefs.asr == 2) t("asr_hanafi") else t("asr_std")}",
-            12, color = LocalPal.current.sub, modifier = Modifier.padding(start = 16.dp)
-        )
-    }
-    }
     }
 }
 
 @Composable
-private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past: Boolean, today: java.time.LocalDate) {
+private fun SkyIconButton(path: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)).tap(scale = 0.9f, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { GlyphIcon(path, color, 18.dp) }
+}
+
+@Composable
+private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past: Boolean, today: java.time.LocalDate, compact: Boolean = false, small: Boolean = false) {
     val p = LocalPal.current
     val weight = if (isNext) FontWeight.Bold else FontWeight.Medium
     val tag = when (e.kind) {
@@ -302,7 +241,7 @@ private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 54.dp)
+                .heightIn(min = if (small) 34.dp else if (compact) 40.dp else 54.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -314,11 +253,66 @@ private fun PrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past
                     .background(if (isNext) p.accentText else if (past) p.line else p.sub)
             )
             Column(Modifier.weight(1f)) {
-                Txt(e.title, 17, weight)
-                if (tag != null) Txt(tag, 12, color = p.sub)
+                Txt(e.title, if (compact) 16 else 17, weight, maxLines = 1)
+                if (tag != null && !compact) Txt(tag, 12, color = p.sub)
             }
             if (e.kind != Kind.MIDNIGHT) ModeChip(ctx, e.kind)
-            Txt(Fmt.time(e.at), 17, weight)
+            Txt(Fmt.time(e.at), if (compact) 18 else 17, if (compact) FontWeight.SemiBold else weight)
+        }
+    }
+}
+
+/**
+ * Zeile wie in der Himmel-Probe: Punkt (beim nächsten Gebet leuchtend grün), Name,
+ * beim nächsten Gebet „in 1:12“ in Grün, große Uhrzeit. Vergangene Gebete gedämpft.
+ * Antippen wechselt Aus → Ton → Adhan (kurze Bestätigung unten).
+ */
+@Composable
+private fun GlassPrayerRow(ctx: Context, e: Ev, first: Boolean, isNext: Boolean, past: Boolean, nextIn: String?, small: Boolean) {
+    val green = Color(0xFF7CF0C8)
+    val alpha = if (past && !isNext) 0.55f else 1f
+    Column(
+        Modifier.fillMaxWidth()
+            .background(if (isNext) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+            .tap(scale = 0.99f) {
+                val max = if (e.kind.prayer) 2 else 1
+                if (e.kind == Kind.MIDNIGHT) return@tap
+                val m = (Prefs.mode(e.kind) + 1) % (max + 1)
+                Prefs.setMode(e.kind, m)
+                Scheduler.reschedule(ctx)
+                val label = listOf(t("mode_off"), t("mode_tone"), t("mode_adhan"))[m]
+                android.widget.Toast.makeText(ctx, e.title + ": " + label, android.widget.Toast.LENGTH_SHORT).show()
+            }
+    ) {
+        if (!first) Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.12f)))
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = if (small) 36.dp else 44.dp).padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+                if (isNext) drawCircle(green.copy(alpha = 0.35f), size.minDimension * 0.45f)
+                drawCircle(if (isNext) green else Color.White.copy(alpha = 0.35f * alpha), size.minDimension * 0.22f)
+            }
+            Spacer(Modifier.width(8.dp))
+            androidx.compose.material3.Text(
+                e.title, color = Color.White.copy(alpha = alpha), maxLines = 1,
+                style = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium)
+            )
+            if (nextIn != null) {
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.material3.Text(
+                    t("in_time", nextIn), color = green, maxLines = 1,
+                    style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            androidx.compose.material3.Text(
+                Fmt.time(e.at), color = Color.White.copy(alpha = alpha), maxLines = 1,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 19.sp, fontWeight = if (past && !isNext) FontWeight.Medium else FontWeight.SemiBold,
+                    fontFeatureSettings = "tnum", letterSpacing = 0.2.sp
+                )
+            )
         }
     }
 }
@@ -416,7 +410,7 @@ private fun MyMosqueCard(now: Long, v: Int, onOpenMap: () -> Unit) {
         }
     }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(p.card).padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(p.card).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         val i = info

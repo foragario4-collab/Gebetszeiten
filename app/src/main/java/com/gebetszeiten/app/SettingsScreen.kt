@@ -315,6 +315,10 @@ fun SettingsScreen(v: Int, onBack: () -> Unit = {}) {
                 Prefs.theme = it
                 Widgets.updateAll(ctx)
             }
+            SegRow(t("sky_q"), listOf(t("sky_off"), t("sky_eco"), t("sky_full")), Prefs.skyQuality) {
+                Prefs.skyQuality = it
+                SkyQuality.level = it
+            }
             StepperRow(t("hijri_date"), t("days", signed(Prefs.hijriAdj)),
                 onMinus = { Prefs.hijriAdj = (Prefs.hijriAdj - 1).coerceAtLeast(-2); Widgets.updateAll(ctx) },
                 onPlus = { Prefs.hijriAdj = (Prefs.hijriAdj + 1).coerceAtMost(2); Widgets.updateAll(ctx) })

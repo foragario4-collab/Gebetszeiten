@@ -222,6 +222,11 @@ object Prefs {
         get() = sp.getBoolean("notifDesign", true)
         set(v) = edit { putBoolean("notifDesign", v) }
 
+    /** Lebender Himmel: 0 aus, 1 sparsam (Standard), 2 voll */
+    var skyQuality: Int
+        get() = sp.getInt("skyQuality", 1)
+        set(v) = edit { putInt("skyQuality", v) }
+
     var lastHandled: Long
         get() = sp.getLong("lastHandled", 0L)
         set(v) {

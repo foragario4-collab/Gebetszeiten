@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Prefs.init(this)
         NavRequest.tab = intent?.getIntExtra("openTab", -1) ?: -1
+        SkyQuality.init()
         Notifs.channels(this)
         enableEdgeToEdge()
         if (Prefs.setupDone && Build.VERSION.SDK_INT >= 33 &&

@@ -25,6 +25,8 @@ object Glyph {
     const val PRAYER_LINE = "M4 22V10a8 8 0 0 1 16 0v12"
     const val PRAYER_FILL = "M9 22v-7a3 3 0 0 1 6 0v7z"
     const val WUDU = "M4 8h9a3 3 0 0 1 3 3v2h-3v-2H4zM6 5h4v3H6zM14.5 16c1.4 2 2.2 3.2 2.2 4.2a2.2 2.2 0 0 1-4.4 0c0-1 0.8-2.2 2.2-4.2z"
+    const val CHEV_L = "M15 5l-7 7 7 7"
+    const val CHEV_R = "M9 5l7 7-7 7"
     const val CLOSE = "M5 5l14 14M19 5L5 19"
     const val RESET = "M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5"
     const val BELL = "M6 17V11a6 6 0 0 1 12 0v6l2 2H4zM10 21h4"
