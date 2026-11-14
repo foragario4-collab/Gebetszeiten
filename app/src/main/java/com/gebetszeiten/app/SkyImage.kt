@@ -31,7 +31,7 @@ internal object SkyImage {
         val st = skyState(now, Weather.current(ctx))
         val base = shaderBitmap(w, h, st, now) ?: gradientBitmap(w, h, st)
         val c = Canvas(base)
-        drawSkyline(c, w, h, st)
+        // Widgets zeigen nur den Himmel mit Wetter – ohne Stadt-Silhouette (wie in der Vorschau)
         // Milchglas: Ausschnitt stark verkleinern und weich zurückzeichnen = echte Unschärfe
         if (glass.isNotEmpty()) {
             val small = Bitmap.createScaledBitmap(base, (w / 7).coerceAtLeast(1), (h / 7).coerceAtLeast(1), true)
