@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,10 +142,20 @@ fun OnboardingScreen(v: Int) {
         ) { s ->
             when (s) {
                 0 -> Centered {
+                    // Das echte App-Icon (H1): Morgenhimmel + Zeit-Ring mit Pfeil + Kuppel
                     Box(
-                        Modifier.size(96.dp).shadow(14.dp, RoundedCornerShape(22.dp)).clip(RoundedCornerShape(22.dp)).background(Color(0xFF0B6E5F)),
+                        Modifier.size(104.dp).shadow(14.dp, RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)),
                         contentAlignment = Alignment.Center
-                    ) { Moon() }
+                    ) {
+                        androidx.compose.foundation.Image(
+                            androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_bg), null,
+                            Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                        androidx.compose.foundation.Image(
+                            androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_fg), null,
+                            Modifier.fillMaxSize().graphicsLayer(scaleX = 1.45f, scaleY = 1.45f)
+                        )
+                    }
                     Spacer(Modifier.height(18.dp))
                     Txt(t("ob_welcome"), 32, FontWeight.Bold, align = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))

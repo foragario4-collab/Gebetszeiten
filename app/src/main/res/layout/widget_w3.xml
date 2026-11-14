@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent">
+<ImageView android:id="@+id/bg" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:importantForAccessibility="no" />
+<LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="36dp" android:paddingEnd="18dp">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/w3_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="17sp" android:textColor="#FFFFFF" android:shadowColor="#66000000" android:shadowDy="1" android:shadowRadius="3" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/w3_after" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="#FFFFFF" android:shadowColor="#66000000" android:shadowDy="1" android:shadowRadius="3" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <Chronometer android:id="@+id/w3_chrono" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="28sp" android:fontFamily="sans-serif-light" android:textColor="#FFFFFF" android:shadowColor="#66000000" android:shadowDy="1" android:shadowRadius="3" android:maxLines="1" />
+</LinearLayout>
+</FrameLayout>

@@ -88,5 +88,34 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_small_info" />
         </receiver>
+
+        <receiver android:name=".RingWidget" android:exported="true" android:label="Ring">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w2_info" />
+        </receiver>
+
+        <receiver android:name=".BarWidget" android:exported="true" android:label="Zeile">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w3_info" />
+        </receiver>
+
+        <receiver android:name=".MosqueWidget" android:exported="true" android:label="Meine Moschee">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w5_info" />
+        </receiver>
+
+        <receiver android:name=".DayWidget" android:exported="true" android:label="Ganzer Tag">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_w6_info" />
+        </receiver>
+
     </application>
 </manifest>

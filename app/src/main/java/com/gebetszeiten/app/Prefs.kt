@@ -224,7 +224,7 @@ object Prefs {
 
     /** Lebender Himmel: 0 aus, 1 sparsam (Standard), 2 voll */
     var skyQuality: Int
-        get() = sp.getInt("skyQuality", 1)
+        get() = sp.getInt("skyQuality", 2)
         set(v) = edit { putInt("skyQuality", v) }
 
     var lastHandled: Long

@@ -504,9 +504,15 @@ private fun MosqueDetail(
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(p.bg)) {
                 val prayers = listOf(Kind.FAJR, Kind.DHUHR, Kind.ASR, Kind.MAGHRIB, Kind.ISHA)
+                val isFriday = today.dayOfWeek == java.time.DayOfWeek.FRIDAY
+                val hasJum = m.adhan.containsKey("JUMUAH") || m.iqamah.containsKey("JUMUAH")
                 val rows: List<Triple<String, Ev?, String>> =
-                    prayers.map { k -> Triple(k.label, evs.firstOrNull { it.kind == k && it.day == today }, k.name) } +
-                        (if (m.adhan.containsKey("JUMUAH") || m.iqamah.containsKey("JUMUAH")) listOf(Triple(t("k_JUMUAH"), null, "JUMUAH")) else emptyList())
+                    prayers.map { k ->
+                        val e = evs.firstOrNull { it.kind == k && it.day == today }
+                        // Freitags: Dhuhr wird zu Jumuah (mit den Jumuah-Zeiten der Moschee, falls vorhanden)
+                        if (isFriday && k == Kind.DHUHR) Triple(t("k_JUMUAH"), e, if (hasJum) "JUMUAH" else k.name)
+                        else Triple(k.label, e, k.name)
+                    } + (if (!isFriday && hasJum) listOf(Triple(t("k_JUMUAH"), null, "JUMUAH")) else emptyList())
                 rows.forEach { (label, e, key) ->
                     val isNext = e != null && next != null && e.kind == next.kind && e.day == next.day
                     val c = if (isNext) Color.White else p.text

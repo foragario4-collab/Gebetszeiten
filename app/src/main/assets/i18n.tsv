@@ -410,3 +410,4 @@ sky_q	Himmel auf „Heute“	Sky on “Today”	“Bugün” gökyüzü	Nebo na 
 sky_off	Ruhig	Still	Sabit	Mirno	Mirno	I qetë	Fixe	Статично	Тийна	静态	ثابت
 sky_eco	Sparsam	Eco	Tasarruf	Štedljivo	Štedljivo	Kursim	Éco	Эконом	Кхоаме	省电	موفر
 sky_full	Voll	Full	Tam	Puno	Puno	Plot	Complet	Полное	Дуьззина	完整	كامل
+w_after	danach {0} {1}	then {0} {1}	sonra {0} {1}	zatim {0} {1}	zatim {0} {1}	pastaj {0} {1}	ensuite {0} {1}	затем {0} {1}	тӀаккха {0} {1}	随后 {0} {1}	ثم {0} {1}

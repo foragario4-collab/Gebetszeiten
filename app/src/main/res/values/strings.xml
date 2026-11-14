@@ -2,4 +2,8 @@
     <string name="app_name">Gebetszeiten</string>
     <string name="widget_medium_desc">Gebetszeiten des Tages – das nächste Gebet immer in der Mitte</string>
     <string name="widget_small_desc">Nächstes Gebet mit Countdown</string>
+    <string name="widget_w2_desc">Ring: Countdown bis zum nächsten Gebet</string>
+    <string name="widget_w3_desc">Schmale Zeile: nächstes Gebet mit Countdown</string>
+    <string name="widget_w5_desc">Meine Moschee: Adhan, Iqamah und Losfahren-Zeit</string>
+    <string name="widget_w6_desc">Großes Widget: ganzer Tag mit Countdown</string>
 </resources>

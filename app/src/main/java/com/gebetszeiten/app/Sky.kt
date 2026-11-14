@@ -85,7 +85,7 @@ float hash31(float3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p
 float noise3(float3 x){float3 i=floor(x);float3 f=fract(x);f=f*f*(3.-2.*f);
   return mix(mix(mix(hash31(i),hash31(i+float3(1,0,0)),f.x),mix(hash31(i+float3(0,1,0)),hash31(i+float3(1,1,0)),f.x),f.y),
              mix(mix(hash31(i+float3(0,0,1)),hash31(i+float3(1,0,1)),f.x),mix(hash31(i+float3(0,1,1)),hash31(i+float3(1,1,1)),f.x),f.y),f.z);}
-float fbm3d(float3 p){float v=0.;float a=.5;for(int i=0;i<3;i++){v+=a*noise3(p);p=p*2.03+float3(1.3,7.1,3.7);a*=.5;}return v+.06;}
+float fbm3d(float3 p){float v=0.;float a=.5;for(int i=0;i<4;i++){v+=a*noise3(p);p=p*2.03+float3(1.3,7.1,3.7);a*=.5;}return v;}
 float cloudDens(float3 pos, float cov, float t){
   float hf=(pos.y-1.0)/1.6;
   if(hf<0.||hf>1.) return 0.;
@@ -147,7 +147,7 @@ half4 main(float2 fc){
       float toward=smoothstep(-.3,1.,cosT);
       float2 fp=float2(uFlashPos.x*asp,uFlashPos.y);
       float fl=uFlash*(exp(-length(p-fp)*3.2)*1.6+exp(-length(p-fp)*1.1)*.35);
-      for(int i=0;i<16;i++){
+      for(int i=0;i<18;i++){
         if(float(i)>=uSteps || T<.03) break;
         float3 pos=dir*tt;
         float dn=cloudDens(pos,uCloud,uTime);
@@ -331,7 +331,7 @@ private fun makeStrike(w: Float, h: Float, now: Long): Strike {
     return Strike(paths, s.x / w, 1f - s.y / h, now, pulses)
 }
 
-private val SKYLINE = "M0 120 V96 H18 V88 H30 V96 H48 V80 Q48 70 58 66 Q68 70 68 80 V96 H78 V58 L81 48 L84 58 V96 H96 V90 H120 V84 H134 V92 H150 V74 Q150 52 176 46 Q202 52 202 74 V92 H214 V40 L218 28 L222 40 V92 H236 V86 H254 V94 H272 V82 Q272 72 282 68 Q292 72 292 82 V94 H306 V88 H326 V96 H346 V86 H360 V96 H390 V120 Z"
+internal val SKYLINE = "M0 120 V96 H18 V88 H30 V96 H48 V80 Q48 70 58 66 Q68 70 68 80 V96 H78 V58 L81 48 L84 58 V96 H96 V90 H120 V84 H134 V92 H150 V74 Q150 52 176 46 Q202 52 202 74 V92 H214 V40 L218 28 L222 40 V92 H236 V86 H254 V94 H272 V82 Q272 72 282 68 Q292 72 292 82 V94 H306 V88 H326 V96 H346 V86 H360 V96 H390 V120 Z"
 
 /** Laufender Zustand des Himmels (Wetter, Animation, Blitz, Helligkeit hinter dem Text). */
 class SkyInfo internal constructor(
@@ -392,7 +392,7 @@ fun rememberSky(now: Long): SkyInfo {
                         flash.floatValue = strike.value?.intensity(wall) ?: 0f
                         // Teurer Teil (Wolken) nur alle 150–250 ms neu rechnen, bei Blitz jedes Bild.
                         // Dazwischen wird das fertige Bild wiederverwendet – sieht gleich aus, kostet ein Bruchteil.
-                        val cloudEvery = if (SkyQuality.level >= 2) 150L else 250L
+                        val cloudEvery = if (SkyQuality.level >= 2) 100L else 200L
                         if (ms - lastCloud >= cloudEvery || flash.floatValue > 0.02f) {
                             lastCloud = ms
                             if (!reduceMotion) cloudTime.floatValue = ms / 1000f
@@ -530,10 +530,11 @@ fun glassPal(info: SkyInfo): Pal {
 @RequiresApi(33)
 @Composable
 private fun ShaderSky(info: SkyInfo, wPx: Float, hPx: Float, blur: Boolean) {
-    val shader = remember { SkyShader.create() } ?: return
+    val shader = remember { if (blur) SkyShader.blurred() else SkyShader.sharp() } ?: return
     val brush = remember(shader) { ShaderBrush(shader) }
     val q = SkyQuality.level
-    val scale = if (q >= 2) 2.6f else 3.4f
+    val base = if (q >= 2) 2.2f else 3.0f
+    val scale = if (blur) base * 1.8f else base
     val density = LocalDensity.current
     Canvas(
         Modifier
@@ -543,7 +544,7 @@ private fun ShaderSky(info: SkyInfo, wPx: Float, hPx: Float, blur: Boolean) {
                 // Ergebnis bleibt als Bild erhalten und wird nur beim nächsten Takt neu gerechnet
                 compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen,
                 renderEffect = if (blur && Build.VERSION.SDK_INT >= 31)
-                    androidx.compose.ui.graphics.BlurEffect(7f, 7f, androidx.compose.ui.graphics.TileMode.Clamp) else null
+                    androidx.compose.ui.graphics.BlurEffect(5f, 5f, androidx.compose.ui.graphics.TileMode.Clamp) else null
             )
     ) {
         @Suppress("UNUSED_VARIABLE") val tk = info.tick.intValue  // nur bei neuem Takt neu zeichnen
@@ -571,8 +572,8 @@ private fun ShaderSky(info: SkyInfo, wPx: Float, hPx: Float, blur: Boolean) {
         shader.setFloatUniform("uWind", st.wind)
         shader.setFloatUniform("uCloudLit", st.lit[0], st.lit[1], st.lit[2])
         shader.setFloatUniform("uCloudShade", st.shade[0], st.shade[1], st.shade[2])
-        shader.setFloatUniform("uSteps", if (q >= 2) 14f else 10f)
-        shader.setFloatUniform("uLight", if (q >= 2) 1f else 0f)
+        shader.setFloatUniform("uSteps", if (blur) 10f else if (q >= 2) 18f else 12f)
+        shader.setFloatUniform("uLight", if (!blur && q >= 2) 1f else 0f)
         drawRect(brush)
     }
 }
@@ -596,27 +597,37 @@ private fun SkyParticles(info: SkyInfo) {
             }
         }
         if (st.rain > 0.02f) {
+            // Regenfäden in drei Tiefen: hinten fein und blass, vorne dicker; oben ausgeblendet (Bewegungsunschärfe)
             val n = (drops.size * min(1f, 0.35f + st.rain)).toInt()
-            val slant = 0.06f + 0.16f * (st.wind - 0.4f) / 2.2f
+            val slant = 0.06f + 0.16f * ((st.wind - 0.4f) / 2.2f).coerceIn(0f, 1f)
             for (i in 0 until n) {
                 val d = drops[i]; val layer = d[3]
-                val speed = h * (1.1f + layer * 0.5f) * d[2]
-                val len = h * (0.025f + layer * 0.018f)
+                val speed = h * (1.1f + layer * 0.55f) * d[2]
+                val len = h * (0.03f + layer * 0.02f) * (0.7f + d[2] * 0.4f)
                 val y = ((d[1] * h + t * speed) % (h + len)) - len
                 val x = (d[0] * w) - y * slant
+                val a0 = Offset(x, y); val a1 = Offset(x - len * slant, y + len)
                 drawLine(
-                    Color(0xFFDCE6FF).copy(alpha = 0.25f + layer * 0.18f), Offset(x, y), Offset(x - len * slant, y + len),
-                    strokeWidth = 1f + layer * 0.9f, cap = StrokeCap.Round
+                    Brush.linearGradient(listOf(Color(0x00DCE6FF), Color(0xFFDCE6FF).copy(alpha = 0.22f + layer * 0.2f)), a0, a1),
+                    a0, a1, strokeWidth = 0.8f + layer * 0.9f, cap = StrokeCap.Round
                 )
             }
+            // leichter Sprühschleier
+            drawRect(Color(0xFF9AA6BF).copy(alpha = 0.06f * st.rain))
         }
         if (st.snow > 0.02f) {
+            // Flocken in drei Tiefen: vorne groß und weich (unscharf), hinten klein und klar
             val n = (flakes.size * min(1f, 0.4f + st.snow)).toInt()
             for (i in 0 until n) {
                 val f = flakes[i]; val layer = f[3]
-                val y = (f[1] * h + t * h * (0.05f + layer * 0.04f)) % h
-                val x = f[0] * w + sin(t * 0.6f + f[2]) * (8f + layer * 6f)
-                drawCircle(Color.White.copy(alpha = 0.55f + layer * 0.15f), 1.6f + layer * 1.8f, Offset(x, y))
+                val y = (f[1] * h + t * h * (0.04f + layer * 0.045f)) % h
+                val x = f[0] * w + sin(t * 0.6f + f[2]) * (8f + layer * 7f)
+                val r = 1.5f + layer * layer * 2.2f
+                if (layer >= 2f) {
+                    drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0f)), Offset(x, y), r * 1.8f), r * 1.8f, Offset(x, y))
+                } else {
+                    drawCircle(Color.White.copy(alpha = 0.6f + layer * 0.15f), r, Offset(x, y))
+                }
             }
         }
     }
@@ -656,11 +667,20 @@ fun GlassBackdrop(info: SkyInfo, reg: GlassRegistry, radiusDp: Dp = 22.dp) {
 }
 
 /** Shader einmal erzeugen; schlägt das fehl (z. B. Grafiktreiber), wird ein einfacher Verlauf gezeigt. */
-private object SkyShader {
+internal object SkyShader {
     private var shader: Any? = null
     private var failed = false
     fun ok(): Boolean = get() != null
     fun create(): RuntimeShader? = if (Build.VERSION.SDK_INT < 33 || failed) null else try { RuntimeShader(SKY_AGSL) } catch (e: Throwable) { failed = true; null }
+    @Volatile private var sharpS: Any? = null
+    @Volatile private var blurS: Any? = null
+    fun sharp(): RuntimeShader? { sharpS?.let { return it as RuntimeShader }; return create()?.also { sharpS = it } }
+    fun blurred(): RuntimeShader? { blurS?.let { return it as RuntimeShader }; return create()?.also { blurS = it } }
+    /** Beim App-Start im Hintergrund vorbereiten, damit „Heute“ sofort flüssig öffnet. */
+    fun warmUp() {
+        if (Build.VERSION.SDK_INT < 33) return
+        Thread { try { get(); sharp(); blurred() } catch (e: Throwable) { } }.start()
+    }
     @Suppress("UNCHECKED_CAST")
     fun get(): RuntimeShader? {
         if (Build.VERSION.SDK_INT < 33 || failed) return null
@@ -677,6 +697,6 @@ private object SkyShader {
 
 /** Qualität des Himmels: 0 = aus (ruhiger Verlauf), 1 = sparsam, 2 = voll. Startwert aus den Einstellungen. */
 object SkyQuality {
-    var level by androidx.compose.runtime.mutableIntStateOf(1)
+    var level by androidx.compose.runtime.mutableIntStateOf(2)
     fun init() { level = Prefs.skyQuality }
 }
